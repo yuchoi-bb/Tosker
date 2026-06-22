@@ -1,0 +1,12 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+*.jks
+*.keystore
+# google-services.json 실제 파일은 gitignore 하지 않음 (플레이스홀더 커밋)

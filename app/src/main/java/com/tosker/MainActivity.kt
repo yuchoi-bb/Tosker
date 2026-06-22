@@ -1,6 +1,5 @@
 package com.tosker
 
-import android.app.Activity
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,7 +8,9 @@ import androidx.activity.viewModels
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.auth.api.signin.GoogleSignInStatusCodes
 import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.tasks.TasksScopes
 import com.tosker.ui.ToskerApp
@@ -23,22 +24,41 @@ class MainActivity : ComponentActivity() {
     private val signInLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            runCatching {
-                val account = task.getResult(ApiException::class.java)
-                viewModel.onSignInSuccess(account, this)
-            }.onFailure { e ->
-                val detail = if (e is ApiException) {
-                    "code ${e.statusCode}: ${e.message}"
-                } else {
-                    e.message ?: "로그인 실패"
-                }
-                viewModel.onSignInFailure(detail)
-            }
-        } else {
-            viewModel.onSignInFailure("로그인 취소")
+        // resultCode가 RESULT_OK가 아니어도(예: 설정 오류 시 RESULT_CANCELED) 인텐트에는
+        // 실제 ApiException 상태 코드가 담겨 있습니다. 항상 파싱해서 정확한 원인을 노출합니다.
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            viewModel.onSignInSuccess(account, this)
+        } catch (e: ApiException) {
+            viewModel.onSignInFailure(buildSignInErrorMessage(e.statusCode, result.resultCode))
+        } catch (e: Exception) {
+            viewModel.onSignInFailure("알 수 없는 오류: ${e.message} (resultCode=${result.resultCode})")
         }
+    }
+
+    /** Google Sign-In 상태 코드를 사람이 읽을 수 있는 진단 메시지로 변환 */
+    private fun buildSignInErrorMessage(statusCode: Int, resultCode: Int): String {
+        val codeName = GoogleSignInStatusCodes.getStatusCodeString(statusCode)
+        val hint = when (statusCode) {
+            CommonStatusCodes.DEVELOPER_ERROR ->
+                "앱의 SHA-1/패키지명이 Google Cloud OAuth 클라이언트에 등록되지 않았거나 불일치합니다.\n" +
+                "SHA-1: DF:76:1B:99:2A:BB:C9:CE:79:61:72:71:99:47:8F:83:62:BA:59:39\n" +
+                "패키지명: com.tosker"
+            GoogleSignInStatusCodes.SIGN_IN_CANCELLED ->
+                "사용자가 로그인을 취소했습니다."
+            GoogleSignInStatusCodes.SIGN_IN_FAILED ->
+                "로그인 실패. OAuth 동의 화면/테스트 사용자 설정 또는 Tasks API 활성화를 확인하세요."
+            CommonStatusCodes.NETWORK_ERROR ->
+                "네트워크 오류. 연결 상태를 확인하세요."
+            CommonStatusCodes.INTERNAL_ERROR ->
+                "Google Play 서비스 내부 오류. 잠시 후 다시 시도하세요."
+            CommonStatusCodes.API_NOT_CONNECTED ->
+                "Google Play 서비스 연결 실패. 기기의 Play 서비스 상태를 확인하세요."
+            else ->
+                "상세 진단이 필요합니다."
+        }
+        return "code $statusCode ($codeName) / resultCode=$resultCode\n$hint"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

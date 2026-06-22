@@ -1,11 +1,14 @@
 package com.tosker.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.tosker.R
 
@@ -15,6 +18,7 @@ fun LoginDialog(
     onSignInClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val clipboard = LocalClipboardManager.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Tosker") },
@@ -29,11 +33,21 @@ fun LoginDialog(
                     style = MaterialTheme.typography.bodyMedium
                 )
                 if (errorMessage != null) {
-                    Text(
-                        text = "로그인 실패: $errorMessage",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
+                    val fullError = "로그인 실패: $errorMessage"
+                    // 롱프레스로 직접 선택/복사 가능
+                    SelectionContainer {
+                        Text(
+                            text = fullError,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    // 원터치 복사 버튼 (캡처 없이 텍스트로 공유)
+                    TextButton(onClick = {
+                        clipboard.setText(AnnotatedString(fullError))
+                    }) {
+                        Text("오류 복사")
+                    }
                 }
             }
         },

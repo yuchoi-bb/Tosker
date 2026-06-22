@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tosker</string>
+    <string name="sign_in_with_google">Google로 로그인</string>
+    <string name="sign_out">로그아웃</string>
+    <string name="task_hint">할 일을 입력하세요</string>
+    <string name="upload">Upload</string>
+    <string name="upload_success">할 일이 등록되었습니다 ✓</string>
+
+    <!-- TODO: Firebase 콘솔에서 발급받은 Web Client ID로 교체하세요 -->
+    <string name="default_web_client_id">YOUR_WEB_CLIENT_ID.apps.googleusercontent.com</string>
+</resources>

@@ -1,0 +1,6 @@
+-keep class com.google.api.** { *; }
+-keep class com.google.gson.** { *; }
+-dontwarn com.google.api.**
+-dontwarn com.google.common.**
+-dontwarn javax.annotation.**
+-dontwarn org.apache.**

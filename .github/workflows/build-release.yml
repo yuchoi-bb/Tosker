@@ -68,12 +68,12 @@ jobs:
           tag_name: ${{ steps.ver.outputs.VERSION }}
           name: Tosker ${{ steps.ver.outputs.VERSION }}
           body: |
-            ## Tosker Android App ${{ github.event.inputs.version }}
+            ## Tosker Android App ${{ steps.ver.outputs.VERSION }}
 
             Google Tasks 연동 Android 할일 입력 앱 (팝업 다이얼로그 UI)
 
             ### 기능
-            - Google 계정 로그인
+            - Google 계정 로그인 (Tasks 범위)
             - Google Tasks 목록 선택
             - 할 일 입력 (텍스트 + 날짜)
             - Upload 버튼 또는 Enter로 등록
@@ -82,7 +82,20 @@ jobs:
             1. 기기 설정 → 보안 → **알 수 없는 출처** 허용
             2. APK 파일 다운로드 후 설치
 
-            > ⚠️ **주의**: 이 빌드는 Firebase 플레이스홀더로 생성되었습니다.
-            > 실제 Google Tasks 연동을 위해 `google-services.json` 교체 및 OAuth 설정이 필요합니다.
+            ### ⚠️ 로그인 활성화 (필수 1회 설정)
+            이 APK는 **고정 debug keystore**로 서명되어 SHA-1이 항상 동일합니다:
+            ```
+            SHA-1: DF:76:1B:99:2A:BB:C9:CE:79:61:72:71:99:47:8F:83:62:BA:59:39
+            ```
+            로그인이 동작하려면 본인 Google Cloud 프로젝트에 위 SHA-1을 등록해야 합니다:
+            1. Google Cloud Console → **APIs & Services → Library** 에서 **Google Tasks API** 사용 설정
+            2. **OAuth consent screen** 구성 (테스트 사용자에 본인 계정 추가, `.../auth/tasks` 범위)
+            3. **Credentials → Create OAuth client ID → Android**
+               - 패키지명: `com.tosker`
+               - SHA-1: 위 값 입력
+            4. 등록 후 앱에서 다시 로그인 (반영까지 수 분 소요될 수 있음)
+
+            > 로그인 실패 시 다이얼로그에 실제 오류 코드가 표시됩니다.
+            > `code 10`(DEVELOPER_ERROR) = SHA-1/패키지명 미등록 또는 미일치.
           files: ${{ env.APK_PATH }}
           make_latest: true

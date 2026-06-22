@@ -17,7 +17,21 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        debug {
+            // 고정 SHA-1 (DF:76:1B:99:2A:BB:C9:CE:79:61:72:71:99:47:8F:83:62:BA:59:39)
+            // 을 Google Cloud OAuth Android 클라이언트에 등록하세요.
+            storeFile file('tosker-debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

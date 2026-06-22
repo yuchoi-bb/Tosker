@@ -11,6 +11,7 @@ import com.tosker.R
 
 @Composable
 fun LoginDialog(
+    errorMessage: String? = null,
     onSignInClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -27,6 +28,13 @@ fun LoginDialog(
                     text = "Google 계정으로 로그인하여\nGoogle Tasks와 연동하세요.",
                     style = MaterialTheme.typography.bodyMedium
                 )
+                if (errorMessage != null) {
+                    Text(
+                        text = "로그인 실패: $errorMessage",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         },
         confirmButton = {

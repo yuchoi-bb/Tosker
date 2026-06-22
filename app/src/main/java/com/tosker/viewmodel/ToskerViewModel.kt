@@ -10,8 +10,6 @@ import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.tasks.Tasks
 import com.google.api.services.tasks.TasksScopes
 import com.google.api.services.tasks.model.Task
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +40,7 @@ data class TaskListItem(val id: String, val title: String)
 
 data class UiState(
     val authState: AuthState = AuthState.Loading,
+    val authError: String? = null,
     val taskLists: List<TaskListItem> = emptyList(),
     val selectedTaskList: TaskListItem? = null,
     val taskText: String = "",
@@ -58,17 +57,9 @@ class ToskerViewModel : ViewModel() {
 
     fun onSignInSuccess(account: GoogleSignInAccount, context: Context) {
         viewModelScope.launch {
-            _uiState.update { it.copy(authState = AuthState.Loading) }
+            _uiState.update { it.copy(authState = AuthState.Loading, authError = null) }
 
-            // Firebase에도 로그인
-            account.idToken?.let { idToken ->
-                try {
-                    val credential = GoogleAuthProvider.getCredential(idToken, null)
-                    FirebaseAuth.getInstance().signInWithCredential(credential)
-                } catch (_: Exception) { }
-            }
-
-            // Tasks API 서비스 초기화
+            // Tasks API 서비스 초기화 (OAuth 액세스 토큰만 사용, Firebase 불필요)
             val credential = GoogleAccountCredential.usingOAuth2(
                 context,
                 Collections.singleton(TasksScopes.TASKS)
@@ -85,7 +76,8 @@ class ToskerViewModel : ViewModel() {
                     authState = AuthState.LoggedIn(
                         displayName = account.displayName ?: "",
                         email = account.email ?: ""
-                    )
+                    ),
+                    authError = null
                 )
             }
             loadTaskLists()
@@ -93,12 +85,11 @@ class ToskerViewModel : ViewModel() {
     }
 
     fun onSignInFailure(message: String) {
-        _uiState.update { it.copy(authState = AuthState.LoggedOut) }
+        _uiState.update { it.copy(authState = AuthState.LoggedOut, authError = message) }
     }
 
     fun setLoggedOut() {
         tasksService = null
-        FirebaseAuth.getInstance().signOut()
         _uiState.update { UiState(authState = AuthState.LoggedOut) }
     }
 

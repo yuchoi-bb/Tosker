@@ -19,6 +19,7 @@ fun ToskerApp(
         is AuthState.Loading -> LoadingDialog(onDismiss = onDismiss)
 
         is AuthState.LoggedOut -> LoginDialog(
+            errorMessage = uiState.authError,
             onSignInClick = onSignInClick,
             onDismiss = onDismiss
         )

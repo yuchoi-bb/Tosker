@@ -9,4 +9,6 @@
 .cxx
 *.jks
 *.keystore
+# 고정 debug keystore는 안정적인 SHA-1 등록을 위해 커밋 (debug 키는 비밀이 아님)
+!app/tosker-debug.keystore
 # google-services.json 실제 파일은 gitignore 하지 않음 (플레이스홀더 커밋)

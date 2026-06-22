@@ -29,7 +29,12 @@ class MainActivity : ComponentActivity() {
                 val account = task.getResult(ApiException::class.java)
                 viewModel.onSignInSuccess(account, this)
             }.onFailure { e ->
-                viewModel.onSignInFailure(e.message ?: "로그인 실패")
+                val detail = if (e is ApiException) {
+                    "code ${e.statusCode}: ${e.message}"
+                } else {
+                    e.message ?: "로그인 실패"
+                }
+                viewModel.onSignInFailure(detail)
             }
         } else {
             viewModel.onSignInFailure("로그인 취소")
@@ -41,9 +46,11 @@ class MainActivity : ComponentActivity() {
 
         val tasksScope = Scope(TasksScopes.TASKS)
 
+        // Tasks API는 idToken/Firebase가 필요 없습니다. OAuth 액세스 토큰만 필요하며
+        // GoogleAccountCredential이 직접 발급받습니다. 플레이스홀더 web client id로
+        // requestIdToken을 호출하면 DEVELOPER_ERROR(code 10)로 로그인이 실패하므로 제거합니다.
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestIdToken(getString(R.string.default_web_client_id))
             .requestScopes(tasksScope)
             .build()
 

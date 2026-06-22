@@ -2,8 +2,10 @@ name: Build & Release APK
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - 'claude/login-process-docs-5ps56o'
+    paths:
+      - 'release.txt'
   workflow_dispatch:
     inputs:
       version:
@@ -44,18 +46,27 @@ jobs:
       - name: Build Debug APK
         run: gradle assembleDebug
 
+      - name: Read version from release.txt
+        id: ver
+        run: |
+          if [ -f release.txt ]; then
+            VERSION=$(cat release.txt | tr -d '[:space:]')
+          else
+            VERSION=${{ github.event.inputs.version || 'v1.0.0' }}
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
       - name: Rename APK
         run: |
-          VERSION=${{ github.event.inputs.version || github.ref_name }}
+          VERSION=${{ steps.ver.outputs.VERSION }}
           cp app/build/outputs/apk/debug/app-debug.apk tosker-${VERSION}-debug.apk
           echo "APK_PATH=tosker-${VERSION}-debug.apk" >> $GITHUB_ENV
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.version || github.ref_name }}
-          name: Tosker ${{ github.event.inputs.version || github.ref_name }}
+          tag_name: ${{ steps.ver.outputs.VERSION }}
+          name: Tosker ${{ steps.ver.outputs.VERSION }}
           body: |
             ## Tosker Android App ${{ github.event.inputs.version }}
 

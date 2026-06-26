@@ -30,6 +30,7 @@ import com.tosker.R
 import com.tosker.viewmodel.TaskListItem
 import com.tosker.viewmodel.UiState
 import com.tosker.viewmodel.UploadState
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -48,6 +49,26 @@ private val categories = listOf(
     CategoryDef("S", Icons.Default.FitnessCenter, Color(0xFF7BB8D4)),
     CategoryDef("R", Icons.Default.Refresh,       Color(0xFFB5B0CC))
 )
+
+// 일(Sun)부터 시작하는 무지개 색상 요일 정의
+private data class DayDef(val label: String, val dow: DayOfWeek, val color: Color)
+
+private val days = listOf(
+    DayDef("일", DayOfWeek.SUNDAY,    Color(0xFFFF5252)),
+    DayDef("월", DayOfWeek.MONDAY,    Color(0xFFFF8C00)),
+    DayDef("화", DayOfWeek.TUESDAY,   Color(0xFFFFD600)),
+    DayDef("수", DayOfWeek.WEDNESDAY, Color(0xFF4CAF50)),
+    DayDef("목", DayOfWeek.THURSDAY,  Color(0xFF2196F3)),
+    DayDef("금", DayOfWeek.FRIDAY,    Color(0xFF3F51B5)),
+    DayDef("토", DayOfWeek.SATURDAY,  Color(0xFF9C27B0))
+)
+
+// 오늘 기준으로 해당 요일의 가장 가까운 날짜 반환 (오늘 포함 ~ 6일 후)
+private fun nextDateForDow(dow: DayOfWeek): LocalDate {
+    val today = LocalDate.now()
+    val daysUntil = ((dow.value - today.dayOfWeek.value + 7) % 7).toLong()
+    return today.plusDays(daysUntil)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -172,7 +193,37 @@ fun ToskerDialog(
                     }
                 }
 
-                // 날짜 선택 행
+                // 요일 선택 무지개 동그라미 (날짜 위)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    days.forEach { day ->
+                        val isSelected = uiState.selectedDate.dayOfWeek == day.dow
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isSelected) day.color else day.color.copy(alpha = 0.15f)
+                                )
+                                .clickable {
+                                    onDateChange(nextDateForDow(day.dow))
+                                }
+                        ) {
+                            Text(
+                                text = day.label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color.White
+                                        else day.color
+                            )
+                        }
+                    }
+                }
+
+                // 날짜 표시 + 캘린더 버튼
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,

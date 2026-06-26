@@ -1,6 +1,9 @@
 package com.tosker.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -13,9 +16,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.tosker.R
@@ -27,14 +33,18 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
-private data class CategoryDef(val label: String, val icon: ImageVector)
+private data class CategoryDef(
+    val label: String,
+    val icon: ImageVector,
+    val color: Color
+)
 
 // 순서대로 P=개인(0번), W=업무(1번), S=운동(2번), R=반복(3번) 목록에 매핑
 private val categories = listOf(
-    CategoryDef("P", Icons.Default.Person),
-    CategoryDef("W", Icons.Default.Work),
-    CategoryDef("S", Icons.Default.FitnessCenter),
-    CategoryDef("R", Icons.Default.Refresh)
+    CategoryDef("P", Icons.Default.Person,    Color(0xFFF4788A)),
+    CategoryDef("W", Icons.Default.Work,      Color(0xFF9B97D3)),
+    CategoryDef("S", Icons.Default.FitnessCenter, Color(0xFF7BB8D4)),
+    CategoryDef("R", Icons.Default.Refresh,   Color(0xFFB5B0CC))
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,34 +85,53 @@ fun ToskerDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 카테고리 버튼 - 가로 1줄 (인덱스 순서로 목록 매핑)
+                // 카테고리 동그라미 버튼 - 가로 1줄
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     categories.forEachIndexed { index, cat ->
                         val taskList = uiState.taskLists.getOrNull(index)
                         val isSelected = taskList != null &&
                                 uiState.selectedTaskList?.id == taskList.id
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { taskList?.let(onTaskListSelect) },
-                            label = {
-                                Text(
-                                    cat.label,
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                            },
-                            leadingIcon = {
+                        val enabled = taskList != null
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable(enabled = enabled) { taskList?.let(onTaskListSelect) }
+                                .padding(4.dp)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (isSelected) cat.color
+                                        else cat.color.copy(alpha = 0.18f)
+                                    )
+                            ) {
                                 Icon(
                                     cat.icon,
                                     contentDescription = cat.label,
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(22.dp),
+                                    tint = if (isSelected) Color.White
+                                           else cat.color.copy(alpha = if (enabled) 0.7f else 0.3f)
                                 )
-                            },
-                            modifier = Modifier.weight(1f),
-                            enabled = taskList != null
-                        )
+                            }
+                            Text(
+                                text = cat.label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) cat.color
+                                        else MaterialTheme.colorScheme.onSurface.copy(
+                                            alpha = if (enabled) 0.5f else 0.25f
+                                        )
+                            )
+                        }
                     }
                 }
 

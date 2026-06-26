@@ -162,4 +162,15 @@ class ToskerViewModel : ViewModel() {
     fun clearError() {
         _uiState.update { it.copy(uploadState = UploadState.Idle) }
     }
+
+    fun appendVoiceText(text: String) {
+        _uiState.update { state ->
+            val newText = if (state.taskText.isBlank()) text else "${state.taskText} $text"
+            state.copy(taskText = newText)
+        }
+    }
+
+    fun onVoiceError(message: String) {
+        _uiState.update { it.copy(uploadState = UploadState.Error(message)) }
+    }
 }

@@ -8,7 +8,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Work
@@ -41,10 +43,10 @@ private data class CategoryDef(
 
 // 순서대로 P=개인(0번), W=업무(1번), S=운동(2번), R=반복(3번) 목록에 매핑
 private val categories = listOf(
-    CategoryDef("P", Icons.Default.Person,    Color(0xFFF4788A)),
-    CategoryDef("W", Icons.Default.Work,      Color(0xFF9B97D3)),
+    CategoryDef("P", Icons.Default.Person,       Color(0xFFF4788A)),
+    CategoryDef("W", Icons.Default.Work,          Color(0xFF9B97D3)),
     CategoryDef("S", Icons.Default.FitnessCenter, Color(0xFF7BB8D4)),
-    CategoryDef("R", Icons.Default.Refresh,   Color(0xFFB5B0CC))
+    CategoryDef("R", Icons.Default.Refresh,       Color(0xFFB5B0CC))
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,6 +59,7 @@ fun ToskerDialog(
     onUpload: () -> Unit,
     onClearError: () -> Unit,
     onSignOut: () -> Unit,
+    onStartVoice: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
@@ -71,11 +74,11 @@ fun ToskerDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Tosker", style = MaterialTheme.typography.titleLarge)
-                TextButton(onClick = onSignOut) {
-                    Text(
-                        text = stringResource(R.string.sign_out),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "닫기",
+                        tint = MaterialTheme.colorScheme.outline
                     )
                 }
             }
@@ -135,20 +138,39 @@ fun ToskerDialog(
                     }
                 }
 
-                // 할 일 텍스트 입력
-                OutlinedTextField(
-                    value = uiState.taskText,
-                    onValueChange = onTaskTextChange,
-                    label = { Text(stringResource(R.string.task_hint)) },
-                    singleLine = true,
+                // 할 일 텍스트 입력 + 음성 버튼
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = {
-                        focusManager.clearFocus()
-                        onUpload()
-                    }),
-                    enabled = uiState.uploadState !is UploadState.Loading
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    OutlinedTextField(
+                        value = uiState.taskText,
+                        onValueChange = onTaskTextChange,
+                        label = { Text(stringResource(R.string.task_hint)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = {
+                            focusManager.clearFocus()
+                            onUpload()
+                        }),
+                        enabled = uiState.uploadState !is UploadState.Loading
+                    )
+                    IconButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                            onStartVoice()
+                        },
+                        enabled = uiState.uploadState !is UploadState.Loading
+                    ) {
+                        Icon(
+                            Icons.Default.Mic,
+                            contentDescription = "음성 입력",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
 
                 // 날짜 선택 행
                 Row(
@@ -190,6 +212,17 @@ fun ToskerDialog(
                         TextButton(onClick = onClearError) { Text("닫기") }
                     }
                     else -> {}
+                }
+
+                // 로그아웃 버튼 - 좌하단
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onSignOut) {
+                        Text(
+                            text = stringResource(R.string.sign_out),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
                 }
             }
         },

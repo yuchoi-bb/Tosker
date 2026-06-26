@@ -11,6 +11,7 @@ fun ToskerApp(
     viewModel: ToskerViewModel,
     onSignInClick: () -> Unit,
     onSignOutClick: () -> Unit,
+    onStartVoice: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -32,6 +33,7 @@ fun ToskerApp(
             onUpload = viewModel::uploadTask,
             onClearError = viewModel::clearError,
             onSignOut = onSignOutClick,
+            onStartVoice = onStartVoice,
             onDismiss = onDismiss
         )
     }

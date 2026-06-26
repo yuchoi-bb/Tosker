@@ -51,7 +51,6 @@ class MainActivity : ComponentActivity() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ko-KR")
-            putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_MODEL, false)
             putExtra(RecognizerIntent.EXTRA_PROMPT, "말씀하세요...")
         }
         try {

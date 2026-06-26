@@ -29,11 +29,12 @@ import java.time.format.DateTimeFormatter
 
 private data class CategoryDef(val label: String, val icon: ImageVector)
 
+// 순서대로 P=개인(0번), W=업무(1번), S=운동(2번), R=반복(3번) 목록에 매핑
 private val categories = listOf(
-    CategoryDef("개인", Icons.Default.Person),
-    CategoryDef("업무", Icons.Default.Work),
-    CategoryDef("운동", Icons.Default.FitnessCenter),
-    CategoryDef("반복", Icons.Default.Refresh)
+    CategoryDef("P", Icons.Default.Person),
+    CategoryDef("W", Icons.Default.Work),
+    CategoryDef("S", Icons.Default.FitnessCenter),
+    CategoryDef("R", Icons.Default.Refresh)
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,30 +75,34 @@ fun ToskerDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 카테고리 버튼 2x2
-                categories.chunked(2).forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        row.forEach { cat ->
-                            val taskList = uiState.taskLists.find { it.title == cat.label }
-                            val isSelected = uiState.selectedTaskList?.title == cat.label
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { taskList?.let(onTaskListSelect) },
-                                label = { Text(cat.label, style = MaterialTheme.typography.labelMedium) },
-                                leadingIcon = {
-                                    Icon(
-                                        cat.icon,
-                                        contentDescription = cat.label,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                modifier = Modifier.weight(1f),
-                                enabled = taskList != null || uiState.taskLists.isEmpty()
-                            )
-                        }
+                // 카테고리 버튼 - 가로 1줄 (인덱스 순서로 목록 매핑)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    categories.forEachIndexed { index, cat ->
+                        val taskList = uiState.taskLists.getOrNull(index)
+                        val isSelected = taskList != null &&
+                                uiState.selectedTaskList?.id == taskList.id
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { taskList?.let(onTaskListSelect) },
+                            label = {
+                                Text(
+                                    cat.label,
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    cat.icon,
+                                    contentDescription = cat.label,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = taskList != null
+                        )
                     }
                 }
 

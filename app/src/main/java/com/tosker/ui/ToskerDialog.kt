@@ -5,11 +5,15 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -22,6 +26,15 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+
+private data class CategoryDef(val label: String, val icon: ImageVector)
+
+private val categories = listOf(
+    CategoryDef("개인", Icons.Default.Person),
+    CategoryDef("업무", Icons.Default.Work),
+    CategoryDef("운동", Icons.Default.FitnessCenter),
+    CategoryDef("반복", Icons.Default.Refresh)
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,7 +49,6 @@ fun ToskerDialog(
     onDismiss: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
-    var showTaskListMenu by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -62,41 +74,29 @@ fun ToskerDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 할 일 목록 드롭다운
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(
-                        onClick = { showTaskListMenu = true },
-                        modifier = Modifier.fillMaxWidth()
+                // 카테고리 버튼 2x2
+                categories.chunked(2).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = uiState.selectedTaskList?.title ?: "목록 불러오는 중...",
-                            modifier = Modifier.weight(1f)
-                        )
-                        Icon(
-                            Icons.Default.KeyboardArrowDown,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = showTaskListMenu,
-                        onDismissRequest = { showTaskListMenu = false }
-                    ) {
-                        if (uiState.taskLists.isEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text("목록이 없습니다") },
-                                onClick = { showTaskListMenu = false }
+                        row.forEach { cat ->
+                            val taskList = uiState.taskLists.find { it.title == cat.label }
+                            val isSelected = uiState.selectedTaskList?.title == cat.label
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { taskList?.let(onTaskListSelect) },
+                                label = { Text(cat.label, style = MaterialTheme.typography.labelMedium) },
+                                leadingIcon = {
+                                    Icon(
+                                        cat.icon,
+                                        contentDescription = cat.label,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                modifier = Modifier.weight(1f),
+                                enabled = taskList != null || uiState.taskLists.isEmpty()
                             )
-                        } else {
-                            uiState.taskLists.forEach { item ->
-                                DropdownMenuItem(
-                                    text = { Text(item.title) },
-                                    onClick = {
-                                        onTaskListSelect(item)
-                                        showTaskListMenu = false
-                                    }
-                                )
-                            }
                         }
                     }
                 }

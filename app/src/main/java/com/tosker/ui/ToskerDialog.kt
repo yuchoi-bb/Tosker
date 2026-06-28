@@ -2,6 +2,7 @@ package com.tosker.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -10,9 +11,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -85,6 +89,7 @@ fun ToskerDialog(
 ) {
     val focusManager = LocalFocusManager.current
     var showDatePicker by remember { mutableStateOf(false) }
+    var showSettingsMenu by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -95,18 +100,62 @@ fun ToskerDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Tosker", style = MaterialTheme.typography.titleLarge)
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = "닫기",
-                        tint = MaterialTheme.colorScheme.outline
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 설정 버튼 (로그아웃 메뉴 포함)
+                    Box {
+                        IconButton(onClick = { showSettingsMenu = true }) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "설정",
+                                tint = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showSettingsMenu,
+                            onDismissRequest = { showSettingsMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.sign_out)) },
+                                onClick = {
+                                    showSettingsMenu = false
+                                    onSignOut()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Logout, contentDescription = null)
+                                }
+                            )
+                        }
+                    }
+                    // 닫기 버튼 (최우측)
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "닫기",
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                    }
                 }
             }
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 아래로 스와이프(제스처) 시 음성 입력 실행
+                    .pointerInput(Unit) {
+                        var totalDrag = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { totalDrag = 0f },
+                            onDragEnd = {
+                                if (totalDrag > 80f) {
+                                    focusManager.clearFocus()
+                                    onStartVoice()
+                                }
+                            }
+                        ) { _, dragAmount ->
+                            if (dragAmount > 0) totalDrag += dragAmount
+                        }
+                    },
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // 카테고리 동그라미 버튼 - 가로 1줄
@@ -263,17 +312,6 @@ fun ToskerDialog(
                         TextButton(onClick = onClearError) { Text("닫기") }
                     }
                     else -> {}
-                }
-
-                // 로그아웃 버튼 - 좌하단
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = onSignOut) {
-                        Text(
-                            text = stringResource(R.string.sign_out),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
                 }
             }
         },

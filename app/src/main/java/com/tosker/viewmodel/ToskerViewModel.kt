@@ -1,7 +1,8 @@
 package com.tosker.viewmodel
 
+import android.app.Application
 import android.content.Context
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
@@ -10,6 +11,8 @@ import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.tasks.Tasks
 import com.google.api.services.tasks.TasksScopes
 import com.google.api.services.tasks.model.Task
+import com.tosker.settings.ListConfig
+import com.tosker.settings.SettingsStore
 import com.tosker.update.UpdateChecker
 import com.tosker.update.UpdateInfo
 import kotlinx.coroutines.Dispatchers
@@ -48,15 +51,26 @@ data class UiState(
     val taskText: String = "",
     val selectedDate: LocalDate = LocalDate.now(),
     val uploadState: UploadState = UploadState.Idle,
-    val updateInfo: UpdateInfo? = null
+    val updateInfo: UpdateInfo? = null,
+    val listConfigs: Map<String, ListConfig> = emptyMap()
 )
 
-class ToskerViewModel : ViewModel() {
+class ToskerViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val _uiState = MutableStateFlow(UiState())
+    private val settingsStore = SettingsStore(application)
+
+    private val _uiState = MutableStateFlow(
+        UiState(listConfigs = settingsStore.loadConfigs())
+    )
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private var tasksService: Tasks? = null
+
+    /** 설정 화면에서 목록 버튼의 이름/색상을 변경하고 영구 저장 */
+    fun updateListConfig(id: String, label: String, colorHex: Long) {
+        settingsStore.saveConfig(id, ListConfig(label, colorHex))
+        _uiState.update { it.copy(listConfigs = settingsStore.loadConfigs()) }
+    }
 
     fun onSignInSuccess(account: GoogleSignInAccount, context: Context) {
         viewModelScope.launch {
@@ -93,7 +107,12 @@ class ToskerViewModel : ViewModel() {
 
     fun setLoggedOut() {
         tasksService = null
-        _uiState.update { UiState(authState = AuthState.LoggedOut) }
+        _uiState.update {
+            UiState(
+                authState = AuthState.LoggedOut,
+                listConfigs = it.listConfigs
+            )
+        }
     }
 
     private fun loadTaskLists() {

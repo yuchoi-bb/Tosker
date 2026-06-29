@@ -37,6 +37,7 @@ fun ToskerApp(
             onSignOut = onSignOutClick,
             onStartVoice = onStartVoice,
             onUpdateClick = onUpdateClick,
+            onConfigChange = viewModel::updateListConfig,
             onDismiss = onDismiss
         )
     }

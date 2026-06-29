@@ -10,21 +10,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
@@ -32,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.tosker.R
+import com.tosker.settings.CategoryDefaults
 import com.tosker.viewmodel.TaskListItem
 import com.tosker.viewmodel.UiState
 import com.tosker.viewmodel.UploadState
@@ -40,20 +35,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
-
-private data class CategoryDef(
-    val label: String,
-    val icon: ImageVector,
-    val color: Color
-)
-
-// 순서대로 P=개인(0번), W=업무(1번), S=운동(2번), R=반복(3번) 목록에 매핑
-private val categories = listOf(
-    CategoryDef("P", Icons.Default.Person,       Color(0xFFF4788A)),
-    CategoryDef("W", Icons.Default.Work,          Color(0xFF9B97D3)),
-    CategoryDef("S", Icons.Default.FitnessCenter, Color(0xFF7BB8D4)),
-    CategoryDef("R", Icons.Default.Refresh,       Color(0xFFB5B0CC))
-)
 
 // 일(Sun)부터 시작하는 무지개 색상 요일 정의
 private data class DayDef(val label: String, val dow: DayOfWeek, val color: Color)
@@ -87,11 +68,12 @@ fun ToskerDialog(
     onSignOut: () -> Unit,
     onStartVoice: () -> Unit,
     onUpdateClick: (com.tosker.update.UpdateInfo) -> Unit,
+    onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
     onDismiss: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     var showDatePicker by remember { mutableStateOf(false) }
-    var showSettingsMenu by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -103,30 +85,13 @@ fun ToskerDialog(
             ) {
                 Text("Tosker", style = MaterialTheme.typography.titleLarge)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 설정 버튼 (로그아웃 메뉴 포함)
-                    Box {
-                        IconButton(onClick = { showSettingsMenu = true }) {
-                            Icon(
-                                Icons.Default.Settings,
-                                contentDescription = "설정",
-                                tint = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showSettingsMenu,
-                            onDismissRequest = { showSettingsMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.sign_out)) },
-                                onClick = {
-                                    showSettingsMenu = false
-                                    onSignOut()
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Logout, contentDescription = null)
-                                }
-                            )
-                        }
+                    // 설정 버튼 - 클릭 시 새 설정 창 열림
+                    IconButton(onClick = { showSettings = true }) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "설정",
+                            tint = MaterialTheme.colorScheme.outline
+                        )
                     }
                     // 닫기 버튼 (최우측)
                     IconButton(onClick = onDismiss) {
@@ -199,23 +164,24 @@ fun ToskerDialog(
                     }
                 }
 
-                // 카테고리 동그라미 버튼 - 가로 1줄
+                // 카테고리 동그라미 버튼 - 실제 Tasks 목록 + 사용자 설정(이름/색상)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    categories.forEachIndexed { index, cat ->
-                        val taskList = uiState.taskLists.getOrNull(index)
-                        val isSelected = taskList != null &&
-                                uiState.selectedTaskList?.id == taskList.id
-                        val enabled = taskList != null
+                    uiState.taskLists.forEachIndexed { index, taskList ->
+                        val config = uiState.listConfigs[taskList.id]
+                        val label = config?.label
+                            ?: CategoryDefaults.defaultLabel(index, taskList.title)
+                        val color = Color(config?.colorHex ?: CategoryDefaults.defaultColor(index))
+                        val isSelected = uiState.selectedTaskList?.id == taskList.id
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .clickable(enabled = enabled) { taskList?.let(onTaskListSelect) }
+                                .clickable { onTaskListSelect(taskList) }
                                 .padding(4.dp)
                         ) {
                             Box(
@@ -224,26 +190,23 @@ fun ToskerDialog(
                                     .size(52.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (isSelected) cat.color
-                                        else cat.color.copy(alpha = 0.18f)
+                                        if (isSelected) color else color.copy(alpha = 0.18f)
                                     )
                             ) {
-                                Icon(
-                                    cat.icon,
-                                    contentDescription = cat.label,
-                                    modifier = Modifier.size(22.dp),
-                                    tint = if (isSelected) Color.White
-                                           else cat.color.copy(alpha = if (enabled) 0.7f else 0.3f)
+                                Text(
+                                    text = label.take(2),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) Color.White else color
                                 )
                             }
                             Text(
-                                text = cat.label,
+                                text = label,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) cat.color
-                                        else MaterialTheme.colorScheme.onSurface.copy(
-                                            alpha = if (enabled) 0.5f else 0.25f
-                                        )
+                                maxLines = 1,
+                                color = if (isSelected) color
+                                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                             )
                         }
                     }
@@ -380,6 +343,19 @@ fun ToskerDialog(
         },
         dismissButton = null
     )
+
+    // 설정 창
+    if (showSettings) {
+        SettingsDialog(
+            uiState = uiState,
+            onConfigChange = onConfigChange,
+            onSignOut = {
+                showSettings = false
+                onSignOut()
+            },
+            onDismiss = { showSettings = false }
+        )
+    }
 
     // 날짜 선택 다이얼로그
     if (showDatePicker) {

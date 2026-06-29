@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 다운로드한 APK를 패키지 설치 인텐트에 공유하기 위한 경로 -->
+    <external-files-path name="apk_download" path="Download/" />
+    <cache-path name="apk_cache" path="." />
+</paths>

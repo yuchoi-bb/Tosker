@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -85,6 +86,7 @@ fun ToskerDialog(
     onClearError: () -> Unit,
     onSignOut: () -> Unit,
     onStartVoice: () -> Unit,
+    onUpdateClick: (com.tosker.update.UpdateInfo) -> Unit,
     onDismiss: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
@@ -158,6 +160,45 @@ fun ToskerDialog(
                     },
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // 업데이트 알림 배너 - 최신 릴리즈가 있으면 표시
+                uiState.updateInfo?.let { info ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "새 버전 ${info.tagName} 사용 가능",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    "탭하여 업데이트",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                            FilledTonalButton(onClick = { onUpdateClick(info) }) {
+                                Icon(
+                                    Icons.Default.SystemUpdate,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.size(4.dp))
+                                Text("업데이트")
+                            }
+                        }
+                    }
+                }
+
                 // 카테고리 동그라미 버튼 - 가로 1줄
                 Row(
                     modifier = Modifier.fillMaxWidth(),

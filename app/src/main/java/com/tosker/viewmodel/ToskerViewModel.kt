@@ -10,6 +10,8 @@ import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.tasks.Tasks
 import com.google.api.services.tasks.TasksScopes
 import com.google.api.services.tasks.model.Task
+import com.tosker.update.UpdateChecker
+import com.tosker.update.UpdateInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,7 +47,8 @@ data class UiState(
     val selectedTaskList: TaskListItem? = null,
     val taskText: String = "",
     val selectedDate: LocalDate = LocalDate.now(),
-    val uploadState: UploadState = UploadState.Idle
+    val uploadState: UploadState = UploadState.Idle,
+    val updateInfo: UpdateInfo? = null
 )
 
 class ToskerViewModel : ViewModel() {
@@ -161,6 +164,19 @@ class ToskerViewModel : ViewModel() {
 
     fun clearError() {
         _uiState.update { it.copy(uploadState = UploadState.Idle) }
+    }
+
+    /** GitHub 최신 릴리즈를 확인하여 더 높은 버전이 있으면 updateInfo 설정 */
+    fun checkForUpdate(currentVersionName: String) {
+        viewModelScope.launch {
+            val info = withContext(Dispatchers.IO) {
+                runCatching { UpdateChecker.fetchIfUpdateAvailable(currentVersionName) }
+                    .getOrNull()
+            }
+            if (info != null) {
+                _uiState.update { it.copy(updateInfo = info) }
+            }
+        }
     }
 
     fun appendVoiceText(text: String) {

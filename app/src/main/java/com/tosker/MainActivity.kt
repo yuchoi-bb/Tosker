@@ -1,12 +1,21 @@
 package com.tosker
 
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.speech.RecognizerIntent
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -16,12 +25,17 @@ import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.tasks.TasksScopes
 import com.tosker.ui.ToskerApp
+import com.tosker.update.UpdateInfo
 import com.tosker.viewmodel.ToskerViewModel
+import java.io.File
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: ToskerViewModel by viewModels()
     private lateinit var googleSignInClient: GoogleSignInClient
+
+    private var downloadId: Long = -1L
+    private var pendingApkFile: File? = null
 
     private val signInLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -60,6 +74,62 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // 다운로드 완료 시 패키지 설치 화면을 띄우는 리시버
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) ?: -1L
+            if (id == downloadId && id != -1L) {
+                pendingApkFile?.let { installApk(it) }
+            }
+        }
+    }
+
+    /** GitHub 릴리즈 APK를 DownloadManager로 내려받고 완료 시 설치 화면을 띄움 */
+    private fun downloadAndInstall(info: UpdateInfo) {
+        try {
+            val dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(dir, info.apkName)
+            if (file.exists()) file.delete()
+            pendingApkFile = file
+
+            val request = DownloadManager.Request(Uri.parse(info.apkUrl)).apply {
+                setTitle("Tosker ${info.tagName}")
+                setDescription("업데이트 다운로드 중...")
+                setNotificationVisibility(
+                    DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                )
+                setDestinationInExternalFilesDir(
+                    this@MainActivity,
+                    Environment.DIRECTORY_DOWNLOADS,
+                    info.apkName
+                )
+                setMimeType("application/vnd.android.package-archive")
+            }
+            val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            downloadId = dm.enqueue(request)
+            Toast.makeText(this, "업데이트 다운로드를 시작합니다...", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "다운로드 실패: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** 다운로드한 APK 파일에 대해 패키지 설치 인텐트 실행 */
+    private fun installApk(file: File) {
+        try {
+            val uri = FileProvider.getUriForFile(
+                this, "$packageName.fileprovider", file
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "설치 실행 실패: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     /** Google Sign-In 상태 코드를 사람이 읽을 수 있는 진단 메시지로 변환 */
     private fun buildSignInErrorMessage(statusCode: Int, resultCode: Int): String {
         val codeName = GoogleSignInStatusCodes.getStatusCodeString(statusCode)
@@ -86,6 +156,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 다운로드 완료 브로드캐스트 등록
+        ContextCompat.registerReceiver(
+            this,
+            downloadReceiver,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_EXPORTED
+        )
+
+        // 앱 시작 시 GitHub 최신 릴리즈와 현재 버전 비교 → 더 높으면 업데이트 버튼 노출
+        viewModel.checkForUpdate(BuildConfig.VERSION_NAME)
 
         val tasksScope = Scope(TasksScopes.TASKS)
 
@@ -115,8 +196,14 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onStartVoice = ::startVoiceInput,
+                onUpdateClick = { info -> downloadAndInstall(info) },
                 onDismiss = { finish() }
             )
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        runCatching { unregisterReceiver(downloadReceiver) }
     }
 }

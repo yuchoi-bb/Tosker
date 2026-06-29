@@ -3,6 +3,7 @@ package com.tosker.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import com.tosker.update.UpdateInfo
 import com.tosker.viewmodel.AuthState
 import com.tosker.viewmodel.ToskerViewModel
 
@@ -12,6 +13,7 @@ fun ToskerApp(
     onSignInClick: () -> Unit,
     onSignOutClick: () -> Unit,
     onStartVoice: () -> Unit,
+    onUpdateClick: (UpdateInfo) -> Unit,
     onDismiss: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -34,6 +36,7 @@ fun ToskerApp(
             onClearError = viewModel::clearError,
             onSignOut = onSignOutClick,
             onStartVoice = onStartVoice,
+            onUpdateClick = onUpdateClick,
             onDismiss = onDismiss
         )
     }

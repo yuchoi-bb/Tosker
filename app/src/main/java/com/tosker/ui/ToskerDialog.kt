@@ -2,6 +2,7 @@ package com.tosker.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -108,6 +109,15 @@ fun ToskerDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // 빠르게 두 번 탭(더블 탭) 시 음성 입력 실행
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                focusManager.clearFocus()
+                                onStartVoice()
+                            }
+                        )
+                    }
                     // 아래로 스와이프(제스처) 시 음성 입력 실행
                     .pointerInput(Unit) {
                         var totalDrag = 0f

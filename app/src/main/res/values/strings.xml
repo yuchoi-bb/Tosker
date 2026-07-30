@@ -6,6 +6,7 @@
     <string name="task_hint">할 일을 입력하세요</string>
     <string name="upload">Upload</string>
     <string name="upload_success">할 일이 등록되었습니다 ✓</string>
+    <string name="process_text_label">오늘 할일 추가</string>
 
     <!-- TODO: Firebase 콘솔에서 발급받은 Web Client ID로 교체하세요 -->
     <string name="default_web_client_id">YOUR_WEB_CLIENT_ID.apps.googleusercontent.com</string>

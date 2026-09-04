@@ -70,7 +70,10 @@ fun ToskerDialog(
     onClearError: () -> Unit,
     onSignOut: () -> Unit,
     onStartVoice: () -> Unit,
-    onScanDocument: () -> Unit,
+    onStartDocumentScan: () -> Unit,
+    onPickDocumentImage: () -> Unit,
+    onShowDocumentTextInput: () -> Unit,
+    onAnalyzeDocumentText: (String) -> Unit,
     onUpdateClick: (com.tosker.update.UpdateInfo) -> Unit,
     onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
     initialApiKey: String,
@@ -94,8 +97,8 @@ fun ToskerDialog(
             ) {
                 Text("Tosker", style = MaterialTheme.typography.titleLarge)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 문서 스캔 버튼 - 사진 속 날짜/일정을 캘린더·태스크로 가져오기
-                    IconButton(onClick = onScanDocument) {
+                    // 문서 스캔 버튼 - 사진/텍스트 속 날짜·일정을 캘린더·태스크로 가져오기
+                    IconButton(onClick = onStartDocumentScan) {
                         Icon(
                             Icons.Default.DocumentScanner,
                             contentDescription = "문서로 일정 추가",
@@ -385,13 +388,16 @@ fun ToskerDialog(
         )
     }
 
-    // 문서 스캔(사진 → 캘린더/태스크) 창
+    // 문서 스캔(사진·텍스트 → 캘린더/태스크) 창
     DocumentScanDialog(
         state = uiState.documentScanState,
         taskListLabel = uiState.selectedTaskList?.let { list ->
             val index = uiState.taskLists.indexOf(list)
             uiState.listConfigs[list.id]?.label ?: CategoryDefaults.defaultLabel(index, list.title)
         },
+        onPickImage = onPickDocumentImage,
+        onShowTextInput = onShowDocumentTextInput,
+        onAnalyzeText = onAnalyzeDocumentText,
         onItemChange = onReviewItemChange,
         onConfirm = onConfirmDocumentUpload,
         onDismiss = onDismissDocumentScan

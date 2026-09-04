@@ -62,6 +62,13 @@ data class ReviewableEvent(
 
 sealed class DocumentScanState {
     object Idle : DocumentScanState()
+
+    /** 사진에서 가져올지, 텍스트를 붙여넣을지 고르는 단계 */
+    object Choosing : DocumentScanState()
+
+    /** 문서에서 옮겨온 텍스트를 직접 붙여넣는 단계 */
+    object TextInput : DocumentScanState()
+
     object Analyzing : DocumentScanState()
     data class Review(val items: List<ReviewableEvent>) : DocumentScanState()
     object Uploading : DocumentScanState()
@@ -244,7 +251,8 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // ---------------------------------------------------------------------
-    // 문서 스캔 (사진 속 날짜/일정을 Gemini로 추출해 캘린더/태스크에 업로드)
+    // 문서 스캔 (사진 또는 붙여넣은 텍스트 속 날짜/일정을 Gemini로 추출해
+    // 캘린더/태스크에 업로드)
     // ---------------------------------------------------------------------
 
     fun loadGeminiApiKey(): String = settingsStore.loadGeminiApiKey() ?: ""
@@ -253,7 +261,27 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
         settingsStore.saveGeminiApiKey(apiKey)
     }
 
+    /** 문서 아이콘을 눌렀을 때: 사진 / 텍스트 중 무엇으로 가져올지 고르게 한다. */
+    fun startDocumentScan() {
+        _uiState.update { it.copy(documentScanState = DocumentScanState.Choosing) }
+    }
+
+    fun showDocumentTextInput() {
+        _uiState.update { it.copy(documentScanState = DocumentScanState.TextInput) }
+    }
+
     fun analyzeDocument(imageBytes: ByteArray, mimeType: String) {
+        extractEvents { apiKey -> GeminiClient.extractEvents(apiKey, imageBytes, mimeType) }
+    }
+
+    /** 이미지에서 추출해 온 텍스트 등, 붙여넣은 문자열에서 일정을 뽑는다. */
+    fun analyzeDocumentText(documentText: String) {
+        val text = documentText.trim()
+        if (text.isEmpty()) return
+        extractEvents { apiKey -> GeminiClient.extractEventsFromText(apiKey, text) }
+    }
+
+    private fun extractEvents(extract: (apiKey: String) -> List<ExtractedEvent>) {
         val apiKey = settingsStore.loadGeminiApiKey()
         if (apiKey.isNullOrBlank()) {
             _uiState.update {
@@ -269,9 +297,7 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(documentScanState = DocumentScanState.Analyzing) }
 
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { GeminiClient.extractEvents(apiKey, imageBytes, mimeType) }
-            }
+            val result = withContext(Dispatchers.IO) { runCatching { extract(apiKey) } }
 
             result.onSuccess { events ->
                 if (events.isEmpty()) {

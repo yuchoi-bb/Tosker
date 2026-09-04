@@ -9,7 +9,7 @@ import java.net.URL
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-/** Gemini API(Vision)로 사진 속 문서에서 날짜 기반 일정을 추출한다. */
+/** Gemini API로 사진 또는 텍스트에서 날짜 기반 일정을 추출한다. */
 object GeminiClient {
 
     private const val MODEL = "gemini-2.5-flash"
@@ -18,13 +18,36 @@ object GeminiClient {
 
     class GeminiException(message: String) : Exception(message)
 
+    /** 사진(학사일정표, 공지문 등)에서 일정을 추출한다. */
     fun extractEvents(apiKey: String, imageBytes: ByteArray, mimeType: String): List<ExtractedEvent> {
         val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
-        val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+        val parts = JSONArray()
+            .put(
+                JSONObject().put(
+                    "inline_data",
+                    JSONObject()
+                        .put("mime_type", mimeType)
+                        .put("data", base64Image)
+                )
+            )
+            .put(JSONObject().put("text", buildPrompt("첨부된 사진은")))
 
-        val prompt = """
-            오늘 날짜는 $today 입니다. 첨부된 사진은 학사일정표, 공지문, 안내문 등
-            날짜가 포함된 문서입니다. 이 문서에서 날짜(또는 날짜 범위)가 있는 모든
+        return parseEvents(extractResponseText(callGemini(apiKey, parts)))
+    }
+
+    /** 문서에서 옮겨 적었거나 복사해 온 텍스트에서 일정을 추출한다. */
+    fun extractEventsFromText(apiKey: String, documentText: String): List<ExtractedEvent> {
+        val prompt = buildPrompt("아래 --- 다음에 오는 텍스트는") + "\n\n---\n" + documentText
+        val parts = JSONArray().put(JSONObject().put("text", prompt))
+
+        return parseEvents(extractResponseText(callGemini(apiKey, parts)))
+    }
+
+    private fun buildPrompt(sourceDescription: String): String {
+        val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+        return """
+            오늘 날짜는 $today 입니다. $sourceDescription 학사일정표, 공지문, 안내문 등
+            날짜가 포함된 문서입니다. 여기에서 날짜(또는 날짜 범위)가 있는 모든
             일정을 찾아 JSON 배열로 반환하세요.
 
             규칙:
@@ -39,52 +62,37 @@ object GeminiClient {
             - 표에서는 각 행이 하나의 일정입니다.
             - "예시"라고 표시된 항목은 실제 일정이 아니므로 제외하세요.
         """.trimIndent()
+    }
 
-        val responseSchema = JSONObject().apply {
-            put("type", "ARRAY")
-            put(
-                "items",
-                JSONObject().apply {
-                    put("type", "OBJECT")
-                    put(
-                        "properties",
-                        JSONObject().apply {
-                            put("title", JSONObject().put("type", "STRING"))
-                            put("date", JSONObject().put("type", "STRING"))
-                            put("end_date", JSONObject().put("type", "STRING"))
-                            put("time", JSONObject().put("type", "STRING"))
-                            put("note", JSONObject().put("type", "STRING"))
-                        }
-                    )
-                    put("required", JSONArray().put("title").put("date"))
-                }
-            )
-        }
-
-        val requestBody = JSONObject().apply {
-            put(
-                "contents",
-                JSONArray().put(
-                    JSONObject().put(
-                        "parts",
-                        JSONArray()
-                            .put(
-                                JSONObject().put(
-                                    "inline_data",
-                                    JSONObject()
-                                        .put("mime_type", mimeType)
-                                        .put("data", base64Image)
-                                )
-                            )
-                            .put(JSONObject().put("text", prompt))
-                    )
+    private fun responseSchema(): JSONObject = JSONObject().apply {
+        put("type", "ARRAY")
+        put(
+            "items",
+            JSONObject().apply {
+                put("type", "OBJECT")
+                put(
+                    "properties",
+                    JSONObject().apply {
+                        put("title", JSONObject().put("type", "STRING"))
+                        put("date", JSONObject().put("type", "STRING"))
+                        put("end_date", JSONObject().put("type", "STRING"))
+                        put("time", JSONObject().put("type", "STRING"))
+                        put("note", JSONObject().put("type", "STRING"))
+                    }
                 )
-            )
+                put("required", JSONArray().put("title").put("date"))
+            }
+        )
+    }
+
+    private fun callGemini(apiKey: String, parts: JSONArray): String {
+        val requestBody = JSONObject().apply {
+            put("contents", JSONArray().put(JSONObject().put("parts", parts)))
             put(
                 "generationConfig",
                 JSONObject()
                     .put("responseMimeType", "application/json")
-                    .put("responseSchema", responseSchema)
+                    .put("responseSchema", responseSchema())
             )
         }
 
@@ -113,7 +121,7 @@ object GeminiClient {
                 throw GeminiException("API 오류 ($responseCode): $errorMessage")
             }
 
-            return parseEvents(extractResponseText(responseText))
+            return responseText
         } finally {
             connection.disconnect()
         }

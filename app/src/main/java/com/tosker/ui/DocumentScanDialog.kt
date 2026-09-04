@@ -19,25 +19,49 @@ import com.tosker.viewmodel.UploadDestination
 import java.time.format.DateTimeFormatter
 
 /**
- * 사진에서 추출한 일정을 검토하고, 캘린더/태스크 중 어디에 올릴지 고른 뒤
- * 업로드하는 화면. [DocumentScanState]에 따라 로딩/리뷰/업로드/완료/오류를 표시한다.
+ * 사진 또는 붙여넣은 텍스트에서 추출한 일정을 검토하고, 캘린더/태스크 중 어디에
+ * 올릴지 고른 뒤 업로드하는 화면. [DocumentScanState]에 따라 단계를 표시한다.
  */
 @Composable
 fun DocumentScanDialog(
     state: DocumentScanState,
     taskListLabel: String?,
+    onPickImage: () -> Unit,
+    onShowTextInput: () -> Unit,
+    onAnalyzeText: (String) -> Unit,
     onItemChange: (index: Int, included: Boolean?, destination: UploadDestination?, title: String?) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
     if (state is DocumentScanState.Idle) return
 
+    var documentText by remember(state is DocumentScanState.TextInput) { mutableStateOf("") }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("문서에서 일정 가져오기", style = MaterialTheme.typography.titleLarge) },
         text = {
             when (state) {
-                is DocumentScanState.Analyzing -> ScanProgressRow("사진을 분석하고 있어요…")
+                is DocumentScanState.Choosing -> SourceChooser(
+                    onPickImage = onPickImage,
+                    onShowTextInput = onShowTextInput
+                )
+                is DocumentScanState.TextInput -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "문서에서 옮긴 텍스트를 붙여넣으면 날짜와 일정을 찾아드려요.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    OutlinedTextField(
+                        value = documentText,
+                        onValueChange = { documentText = it },
+                        label = { Text("예: 10월 9일(3시) 보강, 14일(3시) 보강") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 140.dp, max = 280.dp)
+                    )
+                }
+                is DocumentScanState.Analyzing -> ScanProgressRow("내용을 분석하고 있어요…")
                 is DocumentScanState.Uploading -> ScanProgressRow("업로드하고 있어요…")
                 is DocumentScanState.Done -> Text(
                     if (state.failCount == 0) "${state.successCount}개 일정을 등록했어요 ✓"
@@ -56,21 +80,51 @@ fun DocumentScanDialog(
             }
         },
         confirmButton = {
-            if (state is DocumentScanState.Review) {
-                Button(
+            when (state) {
+                is DocumentScanState.Review -> Button(
                     onClick = onConfirm,
                     enabled = state.items.any { it.included }
                 ) {
                     Text("업로드 (${state.items.count { it.included }}개)")
                 }
+                is DocumentScanState.TextInput -> Button(
+                    onClick = { onAnalyzeText(documentText) },
+                    enabled = documentText.isNotBlank()
+                ) {
+                    Text("분석")
+                }
+                else -> {}
             }
         },
         dismissButton = {
             if (state !is DocumentScanState.Uploading) {
-                TextButton(onClick = onDismiss) { Text(if (state is DocumentScanState.Review) "취소" else "닫기") }
+                TextButton(onClick = onDismiss) {
+                    Text(
+                        when (state) {
+                            is DocumentScanState.Review, is DocumentScanState.TextInput -> "취소"
+                            else -> "닫기"
+                        }
+                    )
+                }
             }
         }
     )
+}
+
+@Composable
+private fun SourceChooser(onPickImage: () -> Unit, onShowTextInput: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            "학사일정표나 안내문에서 일정을 한 번에 가져옵니다.",
+            style = MaterialTheme.typography.bodyMedium
+        )
+        FilledTonalButton(onClick = onPickImage, modifier = Modifier.fillMaxWidth()) {
+            Text("📷  사진에서 가져오기")
+        }
+        FilledTonalButton(onClick = onShowTextInput, modifier = Modifier.fillMaxWidth()) {
+            Text("📝  텍스트 붙여넣기")
+        }
+    }
 }
 
 @Composable

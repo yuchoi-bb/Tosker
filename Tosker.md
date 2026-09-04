@@ -47,3 +47,27 @@ tosker app은 구글 계정과 연동된다.
 - Google OAuth 2.0 기반 인증 사용
 - `google-services.json` 파일에 Firebase / OAuth 클라이언트 정보 포함
 - Android Credential Manager 또는 Google Sign-In SDK 활용
+- 요청 스코프: Google Tasks(`tasks`) + Google Calendar 이벤트(`calendar.events`)
+
+---
+
+## 문서로 일정 추가 (문서 스캔)
+
+학사일정표, 공지문처럼 날짜가 포함된 사진을 찍거나 골라서 올리면,
+Claude(Anthropic API)가 사진을 읽고 날짜별 일정을 자동으로 추출한다.
+
+1. Tosker 상단의 문서 아이콘을 탭한다.
+2. 갤러리에서 사진을 고르거나 카메라로 바로 찍는다.
+3. Claude가 분석한 일정 목록이 표시된다. 각 항목을 체크/해제하고,
+   제목을 수정하고, "캘린더" / "태스크" / "둘 다" 중 어디에 올릴지 고른다.
+4. 업로드를 누르면 선택한 대상으로 한 번에 등록된다.
+
+### 필요한 설정
+- 설정 화면에 본인의 Anthropic API 키(`console.anthropic.com`에서 발급)를
+  입력해야 한다. 키는 기기에 암호화되어 저장되고, Anthropic 서버 외에는
+  전송되지 않는다.
+- Google Cloud 프로젝트에서 **Google Calendar API**를 사용 설정하고,
+  OAuth 동의 화면에 `calendar.events` 범위를 추가해야 한다(Tasks API와 동일한
+  절차). 기존에 로그인되어 있던 계정은 Calendar 권한이 없으므로 앱이 자동으로
+  로그아웃 상태로 전환하며, 다시 로그인하면 Tasks + Calendar 권한을 함께
+  요청한다.

@@ -13,6 +13,7 @@ fun ToskerApp(
     onSignInClick: () -> Unit,
     onSignOutClick: () -> Unit,
     onStartVoice: () -> Unit,
+    onScanDocument: () -> Unit,
     onUpdateClick: (UpdateInfo) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -36,8 +37,14 @@ fun ToskerApp(
             onClearError = viewModel::clearError,
             onSignOut = onSignOutClick,
             onStartVoice = onStartVoice,
+            onScanDocument = onScanDocument,
             onUpdateClick = onUpdateClick,
             onConfigChange = viewModel::updateListConfig,
+            initialApiKey = viewModel.loadAnthropicApiKey(),
+            onApiKeySave = viewModel::saveAnthropicApiKey,
+            onReviewItemChange = viewModel::updateReviewItem,
+            onConfirmDocumentUpload = viewModel::confirmDocumentUpload,
+            onDismissDocumentScan = viewModel::dismissDocumentScan,
             onDismiss = onDismiss
         )
     }

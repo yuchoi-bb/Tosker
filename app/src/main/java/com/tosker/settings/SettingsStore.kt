@@ -1,6 +1,8 @@
 package com.tosker.settings
 
 import android.content.Context
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import org.json.JSONObject
 
 /** 목록별 버튼 설정 (표시 이름 + 색상 ARGB) */
@@ -33,6 +35,28 @@ class SettingsStore(context: Context) {
 
     private val prefs =
         context.getSharedPreferences("tosker_settings", Context.MODE_PRIVATE)
+
+    // API 키처럼 민감한 값은 별도의 암호화된 저장소에 보관한다.
+    private val securePrefs by lazy {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        EncryptedSharedPreferences.create(
+            context,
+            "tosker_secure_settings",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+    /** 문서 스캔(Claude API) 기능에 사용할 사용자 본인의 Anthropic API 키 */
+    fun loadAnthropicApiKey(): String? =
+        securePrefs.getString(KEY_ANTHROPIC_API_KEY, null)?.takeIf { it.isNotBlank() }
+
+    fun saveAnthropicApiKey(apiKey: String) {
+        securePrefs.edit().putString(KEY_ANTHROPIC_API_KEY, apiKey.trim()).apply()
+    }
 
     fun loadConfigs(): Map<String, ListConfig> {
         val raw = prefs.getString(KEY_CONFIGS, null) ?: return emptyMap()
@@ -72,5 +96,6 @@ class SettingsStore(context: Context) {
 
     private companion object {
         const val KEY_CONFIGS = "list_configs"
+        const val KEY_ANTHROPIC_API_KEY = "anthropic_api_key"
     }
 }

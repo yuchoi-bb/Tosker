@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.tosker.settings.CategoryDefaults
 import com.tosker.settings.ListConfig
@@ -24,47 +28,91 @@ import com.tosker.viewmodel.TaskListItem
 import com.tosker.viewmodel.UiState
 
 /**
- * 설정 창. 첫 번째 기능: Google Tasks에 추가된 목록들을 보여주고
- * 각 목록의 버튼 색상과 표시 이름을 설정할 수 있게 한다.
+ * 설정 창. Google Tasks 목록별 버튼 이름/색상 설정과,
+ * 문서 스캔 기능(Claude API)에 사용할 Anthropic API 키 설정을 제공한다.
  */
 @Composable
 fun SettingsDialog(
     uiState: UiState,
+    initialApiKey: String,
     onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
+    onApiKeySave: (String) -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    var apiKey by remember { mutableStateOf(initialApiKey) }
+    var apiKeyVisible by remember { mutableStateOf(false) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("설정", style = MaterialTheme.typography.titleLarge) },
         text = {
-            if (uiState.taskLists.isEmpty()) {
-                Text(
-                    "목록을 불러오는 중이거나 목록이 없습니다.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        "버튼 이름과 색상 설정",
+                        "문서 스캔용 Anthropic API 키",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.outline
                     )
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                        modifier = Modifier.heightIn(max = 360.dp)
-                    ) {
-                        items(uiState.taskLists, key = { it.id }) { list ->
-                            val index = uiState.taskLists.indexOf(list)
-                            ListConfigRow(
-                                list = list,
-                                config = uiState.listConfigs[list.id]
-                                    ?: ListConfig(
-                                        label = CategoryDefaults.defaultLabel(index, list.title),
-                                        colorHex = CategoryDefaults.defaultColor(index)
-                                    ),
-                                onConfigChange = onConfigChange
-                            )
+                    OutlinedTextField(
+                        value = apiKey,
+                        onValueChange = {
+                            apiKey = it
+                            onApiKeySave(it)
+                        },
+                        label = { Text("sk-ant-...") },
+                        singleLine = true,
+                        visualTransformation = if (apiKeyVisible) VisualTransformation.None
+                                               else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) {
+                                Icon(
+                                    if (apiKeyVisible) Icons.Default.VisibilityOff
+                                    else Icons.Default.Visibility,
+                                    contentDescription = "표시 전환"
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "console.anthropic.com 에서 발급받은 키를 입력하면, 사진 문서를 분석해 " +
+                            "일정을 자동으로 추출할 수 있어요. 키는 기기에 암호화되어 저장됩니다.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+
+                Divider()
+
+                if (uiState.taskLists.isEmpty()) {
+                    Text(
+                        "목록을 불러오는 중이거나 목록이 없습니다.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "버튼 이름과 색상 설정",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            modifier = Modifier.heightIn(max = 280.dp)
+                        ) {
+                            items(uiState.taskLists, key = { it.id }) { list ->
+                                val index = uiState.taskLists.indexOf(list)
+                                ListConfigRow(
+                                    list = list,
+                                    config = uiState.listConfigs[list.id]
+                                        ?: ListConfig(
+                                            label = CategoryDefaults.defaultLabel(index, list.title),
+                                            colorHex = CategoryDefaults.defaultColor(index)
+                                        ),
+                                    onConfigChange = onConfigChange
+                                )
+                            }
                         }
                     }
                 }

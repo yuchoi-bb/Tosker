@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -30,6 +31,7 @@ import com.tosker.R
 import com.tosker.settings.CategoryDefaults
 import com.tosker.viewmodel.TaskListItem
 import com.tosker.viewmodel.UiState
+import com.tosker.viewmodel.UploadDestination
 import com.tosker.viewmodel.UploadState
 import java.time.DayOfWeek
 import java.time.Instant
@@ -68,8 +70,14 @@ fun ToskerDialog(
     onClearError: () -> Unit,
     onSignOut: () -> Unit,
     onStartVoice: () -> Unit,
+    onScanDocument: () -> Unit,
     onUpdateClick: (com.tosker.update.UpdateInfo) -> Unit,
     onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
+    initialApiKey: String,
+    onApiKeySave: (String) -> Unit,
+    onReviewItemChange: (index: Int, included: Boolean?, destination: UploadDestination?, title: String?) -> Unit,
+    onConfirmDocumentUpload: () -> Unit,
+    onDismissDocumentScan: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
@@ -86,6 +94,14 @@ fun ToskerDialog(
             ) {
                 Text("Tosker", style = MaterialTheme.typography.titleLarge)
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 문서 스캔 버튼 - 사진 속 날짜/일정을 캘린더·태스크로 가져오기
+                    IconButton(onClick = onScanDocument) {
+                        Icon(
+                            Icons.Default.DocumentScanner,
+                            contentDescription = "문서로 일정 추가",
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                    }
                     // 설정 버튼 - 클릭 시 새 설정 창 열림
                     IconButton(onClick = { showSettings = true }) {
                         Icon(
@@ -358,7 +374,9 @@ fun ToskerDialog(
     if (showSettings) {
         SettingsDialog(
             uiState = uiState,
+            initialApiKey = initialApiKey,
             onConfigChange = onConfigChange,
+            onApiKeySave = onApiKeySave,
             onSignOut = {
                 showSettings = false
                 onSignOut()
@@ -366,6 +384,18 @@ fun ToskerDialog(
             onDismiss = { showSettings = false }
         )
     }
+
+    // 문서 스캔(사진 → 캘린더/태스크) 창
+    DocumentScanDialog(
+        state = uiState.documentScanState,
+        taskListLabel = uiState.selectedTaskList?.let { list ->
+            val index = uiState.taskLists.indexOf(list)
+            uiState.listConfigs[list.id]?.label ?: CategoryDefaults.defaultLabel(index, list.title)
+        },
+        onItemChange = onReviewItemChange,
+        onConfirm = onConfirmDocumentUpload,
+        onDismiss = onDismissDocumentScan
+    )
 
     // 날짜 선택 다이얼로그
     if (showDatePicker) {

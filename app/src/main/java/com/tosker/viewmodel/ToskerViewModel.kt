@@ -8,9 +8,16 @@ import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
+import com.google.api.client.util.DateTime
+import com.google.api.services.calendar.Calendar
+import com.google.api.services.calendar.CalendarScopes
+import com.google.api.services.calendar.model.Event
+import com.google.api.services.calendar.model.EventDateTime
 import com.google.api.services.tasks.Tasks
 import com.google.api.services.tasks.TasksScopes
 import com.google.api.services.tasks.model.Task
+import com.tosker.ai.AnthropicClient
+import com.tosker.ai.ExtractedEvent
 import com.tosker.settings.ListConfig
 import com.tosker.settings.SettingsStore
 import com.tosker.update.UpdateChecker
@@ -24,9 +31,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Collections
 
 sealed class AuthState {
     object Loading : AuthState()
@@ -43,6 +50,25 @@ sealed class UploadState {
 
 data class TaskListItem(val id: String, val title: String)
 
+/** 문서 스캔으로 추출된 일정 하나를 어디에 올릴지 선택하는 대상 */
+enum class UploadDestination { CALENDAR, TASK, BOTH }
+
+/** 리뷰 화면에서 사용자가 켜고 끄거나 수정할 수 있는, 추출된 일정 한 건 */
+data class ReviewableEvent(
+    val event: ExtractedEvent,
+    val included: Boolean = true,
+    val destination: UploadDestination = UploadDestination.CALENDAR
+)
+
+sealed class DocumentScanState {
+    object Idle : DocumentScanState()
+    object Analyzing : DocumentScanState()
+    data class Review(val items: List<ReviewableEvent>) : DocumentScanState()
+    object Uploading : DocumentScanState()
+    data class Done(val successCount: Int, val failCount: Int) : DocumentScanState()
+    data class Error(val message: String) : DocumentScanState()
+}
+
 data class UiState(
     val authState: AuthState = AuthState.Loading,
     val authError: String? = null,
@@ -52,7 +78,8 @@ data class UiState(
     val selectedDate: LocalDate = LocalDate.now(),
     val uploadState: UploadState = UploadState.Idle,
     val updateInfo: UpdateInfo? = null,
-    val listConfigs: Map<String, ListConfig> = emptyMap()
+    val listConfigs: Map<String, ListConfig> = emptyMap(),
+    val documentScanState: DocumentScanState = DocumentScanState.Idle
 )
 
 class ToskerViewModel(application: Application) : AndroidViewModel(application) {
@@ -65,6 +92,7 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private var tasksService: Tasks? = null
+    private var calendarService: Calendar? = null
 
     /** 설정 화면에서 목록 버튼의 이름/색상을 변경하고 영구 저장 */
     fun updateListConfig(id: String, label: String, colorHex: Long) {
@@ -76,13 +104,18 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _uiState.update { it.copy(authState = AuthState.Loading, authError = null) }
 
-            // Tasks API 서비스 초기화 (OAuth 액세스 토큰만 사용, Firebase 불필요)
+            // Tasks + Calendar API 서비스 초기화 (OAuth 액세스 토큰만 사용, Firebase 불필요)
             val credential = GoogleAccountCredential.usingOAuth2(
                 context,
-                Collections.singleton(TasksScopes.TASKS)
+                setOf(TasksScopes.TASKS, CalendarScopes.CALENDAR_EVENTS)
             )
             credential.selectedAccount = account.account
             tasksService = Tasks.Builder(
+                NetHttpTransport(),
+                GsonFactory.getDefaultInstance(),
+                credential
+            ).setApplicationName("Tosker").build()
+            calendarService = Calendar.Builder(
                 NetHttpTransport(),
                 GsonFactory.getDefaultInstance(),
                 credential
@@ -107,6 +140,7 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setLoggedOut() {
         tasksService = null
+        calendarService = null
         _uiState.update {
             UiState(
                 authState = AuthState.LoggedOut,
@@ -207,5 +241,166 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun onVoiceError(message: String) {
         _uiState.update { it.copy(uploadState = UploadState.Error(message)) }
+    }
+
+    // ---------------------------------------------------------------------
+    // 문서 스캔 (사진 속 날짜/일정을 Claude로 추출해 캘린더/태스크에 업로드)
+    // ---------------------------------------------------------------------
+
+    fun loadAnthropicApiKey(): String = settingsStore.loadAnthropicApiKey() ?: ""
+
+    fun saveAnthropicApiKey(apiKey: String) {
+        settingsStore.saveAnthropicApiKey(apiKey)
+    }
+
+    fun analyzeDocument(imageBytes: ByteArray, mimeType: String) {
+        val apiKey = settingsStore.loadAnthropicApiKey()
+        if (apiKey.isNullOrBlank()) {
+            _uiState.update {
+                it.copy(
+                    documentScanState = DocumentScanState.Error(
+                        "설정에서 Anthropic API 키를 먼저 입력해주세요."
+                    )
+                )
+            }
+            return
+        }
+
+        _uiState.update { it.copy(documentScanState = DocumentScanState.Analyzing) }
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { AnthropicClient.extractEvents(apiKey, imageBytes, mimeType) }
+            }
+
+            result.onSuccess { events ->
+                if (events.isEmpty()) {
+                    _uiState.update {
+                        it.copy(documentScanState = DocumentScanState.Error("문서에서 날짜가 있는 일정을 찾지 못했어요."))
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(documentScanState = DocumentScanState.Review(events.map { e -> ReviewableEvent(e) }))
+                    }
+                }
+            }.onFailure { e ->
+                _uiState.update {
+                    it.copy(documentScanState = DocumentScanState.Error(e.message ?: "문서 분석 실패"))
+                }
+            }
+        }
+    }
+
+    fun updateReviewItem(
+        index: Int,
+        included: Boolean? = null,
+        destination: UploadDestination? = null,
+        title: String? = null
+    ) {
+        val current = _uiState.value.documentScanState
+        if (current !is DocumentScanState.Review) return
+
+        val updatedItems = current.items.mapIndexed { i, item ->
+            if (i != index) return@mapIndexed item
+            item.copy(
+                included = included ?: item.included,
+                destination = destination ?: item.destination,
+                event = if (title != null) item.event.copy(title = title) else item.event
+            )
+        }
+        _uiState.update { it.copy(documentScanState = DocumentScanState.Review(updatedItems)) }
+    }
+
+    fun dismissDocumentScan() {
+        _uiState.update { it.copy(documentScanState = DocumentScanState.Idle) }
+    }
+
+    fun onDocumentPickError(message: String) {
+        _uiState.update { it.copy(documentScanState = DocumentScanState.Error(message)) }
+    }
+
+    fun confirmDocumentUpload() {
+        val current = _uiState.value.documentScanState
+        if (current !is DocumentScanState.Review) return
+        val taskListId = _uiState.value.selectedTaskList?.id
+
+        val toUpload = current.items.filter { it.included }
+        if (toUpload.isEmpty()) {
+            _uiState.update { it.copy(documentScanState = DocumentScanState.Idle) }
+            return
+        }
+
+        _uiState.update { it.copy(documentScanState = DocumentScanState.Uploading) }
+
+        viewModelScope.launch {
+            var successCount = 0
+            var failCount = 0
+
+            withContext(Dispatchers.IO) {
+                for (item in toUpload) {
+                    val needsCalendar = item.destination != UploadDestination.TASK
+                    val needsTask = item.destination != UploadDestination.CALENDAR
+
+                    val calendarOk = if (!needsCalendar) true else runCatching {
+                        calendarService?.events()?.insert("primary", buildCalendarEvent(item.event))?.execute()
+                    }.isSuccess
+
+                    val taskOk = if (!needsTask) true else runCatching {
+                        taskListId?.let {
+                            tasksService?.tasks()?.insert(it, buildGoogleTask(item.event))?.execute()
+                        } ?: throw IllegalStateException("선택된 Tasks 목록이 없습니다.")
+                    }.isSuccess
+
+                    if (calendarOk && taskOk) successCount++ else failCount++
+                }
+            }
+
+            _uiState.update {
+                it.copy(documentScanState = DocumentScanState.Done(successCount, failCount))
+            }
+            delay(2000)
+            _uiState.update { it.copy(documentScanState = DocumentScanState.Idle) }
+        }
+    }
+
+    private fun buildCalendarEvent(e: ExtractedEvent): Event {
+        val event = Event().setSummary(e.title)
+        e.note?.let { event.description = it }
+
+        val zone = ZoneId.systemDefault()
+        val time = e.time
+        if (time != null) {
+            val start = e.date.atTime(LocalTime.parse(time))
+            val end = start.plusHours(1)
+            event.start = EventDateTime()
+                .setDateTime(DateTime(start.atZone(zone).toInstant().toEpochMilli()))
+            event.end = EventDateTime()
+                .setDateTime(DateTime(end.atZone(zone).toInstant().toEpochMilli()))
+        } else {
+            val endExclusive = (e.endDate ?: e.date).plusDays(1)
+            event.start = EventDateTime()
+                .setDate(DateTime(true, e.date.toEpochDay() * 86_400_000L, null))
+            event.end = EventDateTime()
+                .setDate(DateTime(true, endExclusive.toEpochDay() * 86_400_000L, null))
+        }
+        return event
+    }
+
+    private fun buildGoogleTask(e: ExtractedEvent): Task {
+        val dueRfc3339 = e.date
+            .atStartOfDay(ZoneId.of("UTC"))
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
+
+        val notesParts = buildList {
+            if (e.time != null) add("시간: ${e.time}")
+            if (e.endDate != null) add("~ ${e.endDate}")
+            if (e.note != null) add(e.note)
+        }
+
+        return Task().apply {
+            title = e.title
+            due = dueRfc3339
+            if (notesParts.isNotEmpty()) notes = notesParts.joinToString(" · ")
+        }
     }
 }

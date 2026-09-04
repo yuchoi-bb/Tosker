@@ -105,7 +105,13 @@ dependencies {
     implementation('com.google.apis:google-api-services-tasks:v1-rev20210709-2.0.0') {
         exclude group: 'org.apache.httpcomponents'
     }
+    implementation('com.google.apis:google-api-services-calendar:v3-rev20220715-2.0.0') {
+        exclude group: 'org.apache.httpcomponents'
+    }
     implementation 'com.google.http-client:google-http-client-gson:1.44.1'
+
+    // 문서 스캔용 Anthropic API 키를 기기에 암호화 저장
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 
     // Firebase
     implementation platform('com.google.firebase:firebase-bom:32.7.2')

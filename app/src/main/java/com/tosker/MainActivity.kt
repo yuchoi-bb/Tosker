@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.provider.MediaStore
 import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -23,6 +24,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignInStatusCodes
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.common.api.Scope
+import com.google.api.services.calendar.CalendarScopes
 import com.google.api.services.tasks.TasksScopes
 import com.tosker.ui.ToskerApp
 import com.tosker.update.UpdateInfo
@@ -71,6 +73,53 @@ class MainActivity : ComponentActivity() {
             voiceLauncher.launch(intent)
         } catch (e: Exception) {
             viewModel.onVoiceError("음성 인식을 지원하지 않는 기기입니다.")
+        }
+    }
+
+    private var pendingCameraUri: Uri? = null
+
+    private val documentPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val cameraUri = pendingCameraUri
+        pendingCameraUri = null
+        if (result.resultCode == RESULT_OK) {
+            val uri = result.data?.data ?: cameraUri
+            if (uri != null) handlePickedDocumentImage(uri)
+            else viewModel.onDocumentPickError("이미지를 가져오지 못했습니다.")
+        }
+    }
+
+    /** 갤러리에서 고르거나 카메라로 바로 찍을 수 있는 시스템 선택 창을 띄운다. */
+    private fun launchDocumentPicker() {
+        val galleryIntent = Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }
+
+        val photoFile = File(cacheDir, "scan_${System.currentTimeMillis()}.jpg")
+        val photoUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", photoFile)
+        pendingCameraUri = photoUri
+        val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+            putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        }
+
+        val chooser = Intent.createChooser(galleryIntent, "문서 사진 선택").apply {
+            putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(cameraIntent))
+        }
+        try {
+            documentPickerLauncher.launch(chooser)
+        } catch (e: Exception) {
+            viewModel.onDocumentPickError("사진 선택을 열지 못했습니다: ${e.message}")
+        }
+    }
+
+    private fun handlePickedDocumentImage(uri: Uri) {
+        try {
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw IllegalStateException("이미지를 읽을 수 없습니다.")
+            val mimeType = contentResolver.getType(uri) ?: "image/jpeg"
+            viewModel.analyzeDocument(bytes, mimeType)
+        } catch (e: Exception) {
+            viewModel.onDocumentPickError("이미지를 불러오지 못했습니다: ${e.message}")
         }
     }
 
@@ -169,16 +218,17 @@ class MainActivity : ComponentActivity() {
         viewModel.checkForUpdate(BuildConfig.VERSION_NAME)
 
         val tasksScope = Scope(TasksScopes.TASKS)
+        val calendarScope = Scope(CalendarScopes.CALENDAR_EVENTS)
 
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(tasksScope)
+            .requestScopes(tasksScope, calendarScope)
             .build()
 
         googleSignInClient = GoogleSignIn.getClient(this, gso)
 
         val lastAccount = GoogleSignIn.getLastSignedInAccount(this)
-        if (lastAccount != null && GoogleSignIn.hasPermissions(lastAccount, tasksScope)) {
+        if (lastAccount != null && GoogleSignIn.hasPermissions(lastAccount, tasksScope, calendarScope)) {
             viewModel.onSignInSuccess(lastAccount, this)
         } else {
             viewModel.setLoggedOut()
@@ -196,6 +246,7 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onStartVoice = ::startVoiceInput,
+                onScanDocument = ::launchDocumentPicker,
                 onUpdateClick = { info -> downloadAndInstall(info) },
                 onDismiss = { finish() }
             )

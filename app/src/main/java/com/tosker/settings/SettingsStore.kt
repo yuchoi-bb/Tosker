@@ -50,12 +50,12 @@ class SettingsStore(context: Context) {
         )
     }
 
-    /** 문서 스캔(Claude API) 기능에 사용할 사용자 본인의 Anthropic API 키 */
-    fun loadAnthropicApiKey(): String? =
-        securePrefs.getString(KEY_ANTHROPIC_API_KEY, null)?.takeIf { it.isNotBlank() }
+    /** 문서 스캔(Gemini API) 기능에 사용할 사용자 본인의 Gemini API 키 */
+    fun loadGeminiApiKey(): String? =
+        securePrefs.getString(KEY_GEMINI_API_KEY, null)?.takeIf { it.isNotBlank() }
 
-    fun saveAnthropicApiKey(apiKey: String) {
-        securePrefs.edit().putString(KEY_ANTHROPIC_API_KEY, apiKey.trim()).apply()
+    fun saveGeminiApiKey(apiKey: String) {
+        securePrefs.edit().putString(KEY_GEMINI_API_KEY, apiKey.trim()).apply()
     }
 
     fun loadConfigs(): Map<String, ListConfig> {
@@ -96,6 +96,6 @@ class SettingsStore(context: Context) {
 
     private companion object {
         const val KEY_CONFIGS = "list_configs"
-        const val KEY_ANTHROPIC_API_KEY = "anthropic_api_key"
+        const val KEY_GEMINI_API_KEY = "gemini_api_key"
     }
 }

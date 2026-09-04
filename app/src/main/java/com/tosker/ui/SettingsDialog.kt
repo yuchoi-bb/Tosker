@@ -29,7 +29,7 @@ import com.tosker.viewmodel.UiState
 
 /**
  * 설정 창. Google Tasks 목록별 버튼 이름/색상 설정과,
- * 문서 스캔 기능(Claude API)에 사용할 Anthropic API 키 설정을 제공한다.
+ * 문서 스캔 기능(Gemini API)에 사용할 Gemini API 키 설정을 제공한다.
  */
 @Composable
 fun SettingsDialog(
@@ -50,7 +50,7 @@ fun SettingsDialog(
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        "문서 스캔용 Anthropic API 키",
+                        "문서 스캔용 Gemini API 키",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -60,7 +60,7 @@ fun SettingsDialog(
                             apiKey = it
                             onApiKeySave(it)
                         },
-                        label = { Text("sk-ant-...") },
+                        label = { Text("AIza...") },
                         singleLine = true,
                         visualTransformation = if (apiKeyVisible) VisualTransformation.None
                                                else PasswordVisualTransformation(),
@@ -76,7 +76,7 @@ fun SettingsDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        "console.anthropic.com 에서 발급받은 키를 입력하면, 사진 문서를 분석해 " +
+                        "aistudio.google.com/apikey 에서 발급받은 키를 입력하면, 사진 문서를 분석해 " +
                             "일정을 자동으로 추출할 수 있어요. 키는 기기에 암호화되어 저장됩니다.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline

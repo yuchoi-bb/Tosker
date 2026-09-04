@@ -16,8 +16,8 @@ import com.google.api.services.calendar.model.EventDateTime
 import com.google.api.services.tasks.Tasks
 import com.google.api.services.tasks.TasksScopes
 import com.google.api.services.tasks.model.Task
-import com.tosker.ai.AnthropicClient
 import com.tosker.ai.ExtractedEvent
+import com.tosker.ai.GeminiClient
 import com.tosker.settings.ListConfig
 import com.tosker.settings.SettingsStore
 import com.tosker.update.UpdateChecker
@@ -244,22 +244,22 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // ---------------------------------------------------------------------
-    // 문서 스캔 (사진 속 날짜/일정을 Claude로 추출해 캘린더/태스크에 업로드)
+    // 문서 스캔 (사진 속 날짜/일정을 Gemini로 추출해 캘린더/태스크에 업로드)
     // ---------------------------------------------------------------------
 
-    fun loadAnthropicApiKey(): String = settingsStore.loadAnthropicApiKey() ?: ""
+    fun loadGeminiApiKey(): String = settingsStore.loadGeminiApiKey() ?: ""
 
-    fun saveAnthropicApiKey(apiKey: String) {
-        settingsStore.saveAnthropicApiKey(apiKey)
+    fun saveGeminiApiKey(apiKey: String) {
+        settingsStore.saveGeminiApiKey(apiKey)
     }
 
     fun analyzeDocument(imageBytes: ByteArray, mimeType: String) {
-        val apiKey = settingsStore.loadAnthropicApiKey()
+        val apiKey = settingsStore.loadGeminiApiKey()
         if (apiKey.isNullOrBlank()) {
             _uiState.update {
                 it.copy(
                     documentScanState = DocumentScanState.Error(
-                        "설정에서 Anthropic API 키를 먼저 입력해주세요."
+                        "설정에서 Gemini API 키를 먼저 입력해주세요."
                     )
                 )
             }
@@ -270,7 +270,7 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
-                runCatching { AnthropicClient.extractEvents(apiKey, imageBytes, mimeType) }
+                runCatching { GeminiClient.extractEvents(apiKey, imageBytes, mimeType) }
             }
 
             result.onSuccess { events ->

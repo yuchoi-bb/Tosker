@@ -110,7 +110,7 @@ dependencies {
     }
     implementation 'com.google.http-client:google-http-client-gson:1.44.1'
 
-    // 문서 스캔용 Anthropic API 키를 기기에 암호화 저장
+    // 문서 스캔용 Gemini API 키를 기기에 암호화 저장
     implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 
     // Firebase

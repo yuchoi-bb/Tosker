@@ -6,10 +6,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.speech.RecognizerIntent
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -203,8 +205,28 @@ class MainActivity : ComponentActivity() {
         return "code $statusCode ($codeName) / resultCode=$resultCode\n$hint"
     }
 
+    /**
+     * 잠금화면 위에 앱 창을 띄우고 꺼진 화면을 켭니다.
+     * API 27+ 는 전용 API를, 그 이전 버전은 윈도우 플래그를 사용합니다.
+     */
+    private fun enableShowWhenLocked() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 잠금화면 위에 표시 + 꺼진 화면 켜기 (빠른설정 타일/알림에서 바로 실행 가능)
+        enableShowWhenLocked()
 
         // 다운로드 완료 브로드캐스트 등록
         ContextCompat.registerReceiver(

@@ -33,6 +33,10 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # 기본값('tools platform-tools')의 'tools'는 SDK 저장소에서 제거되어
+          # 설치 시 실패합니다. 빈 값으로 두고 아래 단계에서 필요한 것만 설치합니다.
+          packages: ''
 
       - name: Install Android platform & build tools
         run: |

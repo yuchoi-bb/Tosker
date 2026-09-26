@@ -95,6 +95,29 @@ sealed class DocumentScanState {
     data class Error(val message: String) : DocumentScanState()
 }
 
+/** 오늘 처리할 할일 한 건 (오늘 마감이거나 마감일이 지난 미완료 항목) */
+data class TodayTaskItem(
+    val taskId: String,
+    val listId: String,
+    val listTitle: String,
+    val title: String,
+    val due: LocalDate,
+    val notes: String?,
+    val selected: Boolean = false
+) {
+    /** 마감일이 오늘보다 이전이면 지난 항목 */
+    fun isOverdue(today: LocalDate): Boolean = due.isBefore(today)
+}
+
+/** 우→좌 스와이프로 열리는 "오늘 할일" 화면의 상태 */
+sealed class TodayTasksState {
+    object Hidden : TodayTasksState()
+    object Loading : TodayTasksState()
+    data class Loaded(val items: List<TodayTaskItem>) : TodayTasksState()
+    object Moving : TodayTasksState()
+    data class Error(val message: String) : TodayTasksState()
+}
+
 data class UiState(
     val authState: AuthState = AuthState.Loading,
     val authError: String? = null,
@@ -105,7 +128,8 @@ data class UiState(
     val uploadState: UploadState = UploadState.Idle,
     val updateInfo: UpdateInfo? = null,
     val listConfigs: Map<String, ListConfig> = emptyMap(),
-    val documentScanState: DocumentScanState = DocumentScanState.Idle
+    val documentScanState: DocumentScanState = DocumentScanState.Idle,
+    val todayTasksState: TodayTasksState = TodayTasksState.Hidden
 )
 
 class ToskerViewModel(application: Application) : AndroidViewModel(application) {
@@ -274,6 +298,178 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearError() {
         _uiState.update { it.copy(uploadState = UploadState.Idle) }
+    }
+
+    // ── 오늘 할일 화면 (우→좌 스와이프) ────────────────────────────────
+
+    /** "2day" 등 오늘 할 일 목록. 없으면 표시 순서상 맨 앞 목록을 쓴다. */
+    private fun resolveTodayList(state: UiState): TaskListItem? {
+        val ordered = orderedTaskLists(state.taskLists, state.listConfigs)
+        return ordered.firstOrNull { CategoryDefaults.isTodayList(it.item.title) }?.item
+            ?: ordered.firstOrNull()?.item
+    }
+
+    /** 2day 목록 이름 (화면 안내 문구용) */
+    fun todayListTitle(): String? = resolveTodayList(_uiState.value)?.title
+
+    /**
+     * 2day를 제외한 모든 목록에서 오늘 마감이거나 마감일이 지난 미완료 할일을 모아 온다.
+     */
+    fun openTodayTasks() {
+        val state = _uiState.value
+        val todayList = resolveTodayList(state)
+        val service = tasksService
+        if (service == null) {
+            _uiState.update {
+                it.copy(todayTasksState = TodayTasksState.Error("로그인이 필요합니다."))
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(todayTasksState = TodayTasksState.Loading) }
+
+            val today = LocalDate.now()
+            val sourceLists = state.taskLists.filter { it.id != todayList?.id }
+
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    // 오늘 끝까지를 상한으로 두면 "오늘 마감 + 지난 것"만 서버에서 걸러진다.
+                    // (마감일 없는 할일은 dueMax 필터에서 제외된다)
+                    val dueMax = today
+                        .atTime(23, 59, 59)
+                        .atZone(ZoneId.of("UTC"))
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
+
+                    sourceLists.flatMap { list ->
+                        val tasks = mutableListOf<Task>()
+                        var pageToken: String? = null
+                        do {
+                            val response = service.tasks().list(list.id)
+                                .setShowCompleted(false)
+                                .setShowHidden(false)
+                                .setDueMax(dueMax)
+                                .setPageToken(pageToken)
+                                .execute()
+                            tasks += response.items.orEmpty()
+                            pageToken = response.nextPageToken
+                        } while (!pageToken.isNullOrBlank() && tasks.size < 200)
+
+                        tasks.mapNotNull { task ->
+                            val id = task.id ?: return@mapNotNull null
+                            val title = task.title?.trim().orEmpty()
+                            if (title.isBlank()) return@mapNotNull null
+                            val dueDate = parseDueDate(task.due) ?: return@mapNotNull null
+                            if (dueDate.isAfter(today)) return@mapNotNull null
+
+                            TodayTaskItem(
+                                taskId = id,
+                                listId = list.id,
+                                listTitle = list.title,
+                                title = title,
+                                due = dueDate,
+                                notes = task.notes
+                            )
+                        }
+                    }.sortedWith(compareBy({ it.due }, { it.title }))
+                }
+            }
+
+            _uiState.update {
+                if (result.isSuccess) {
+                    it.copy(todayTasksState = TodayTasksState.Loaded(result.getOrThrow()))
+                } else {
+                    val msg = result.exceptionOrNull()?.message ?: "할일을 불러오지 못했습니다."
+                    it.copy(todayTasksState = TodayTasksState.Error(msg))
+                }
+            }
+        }
+    }
+
+    fun closeTodayTasks() {
+        _uiState.update { it.copy(todayTasksState = TodayTasksState.Hidden) }
+    }
+
+    fun toggleTodayTask(taskId: String, listId: String) {
+        val current = _uiState.value.todayTasksState
+        if (current !is TodayTasksState.Loaded) return
+        val updated = current.items.map { item ->
+            if (item.taskId == taskId && item.listId == listId) {
+                item.copy(selected = !item.selected)
+            } else {
+                item
+            }
+        }
+        _uiState.update { it.copy(todayTasksState = TodayTasksState.Loaded(updated)) }
+    }
+
+    /**
+     * 선택한 할일을 2day 목록으로 옮긴다.
+     * 2day에 마감일을 오늘로 해서 새로 만들고, 원본은 삭제한다.
+     */
+    fun moveSelectedToTodayList() {
+        val state = _uiState.value
+        val current = state.todayTasksState
+        if (current !is TodayTasksState.Loaded) return
+
+        val selected = current.items.filter { it.selected }
+        if (selected.isEmpty()) return
+
+        val todayList = resolveTodayList(state) ?: return
+        val service = tasksService ?: return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(todayTasksState = TodayTasksState.Moving) }
+
+            val today = LocalDate.now()
+            val dueRfc3339 = today
+                .atStartOfDay(ZoneId.of("UTC"))
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
+
+            val outcome = withContext(Dispatchers.IO) {
+                var moved = 0
+                var failed = 0
+                selected.forEach { item ->
+                    val ok = runCatching {
+                        val newTask = Task().apply {
+                            title = item.title
+                            notes = item.notes
+                            due = dueRfc3339
+                        }
+                        // 먼저 2day에 생성하고, 성공했을 때만 원본을 삭제한다.
+                        service.tasks().insert(todayList.id, newTask).execute()
+                        service.tasks().delete(item.listId, item.taskId).execute()
+                    }.isSuccess
+                    if (ok) moved++ else failed++
+                }
+                moved to failed
+            }
+
+            val (moved, failed) = outcome
+            _uiState.update {
+                it.copy(
+                    todayTasksState = TodayTasksState.Hidden,
+                    uploadState = if (failed > 0) {
+                        UploadState.Error("${moved}개 이동, ${failed}개 실패")
+                    } else {
+                        UploadState.Success
+                    }
+                )
+            }
+            if (failed == 0) {
+                delay(1500)
+                _uiState.update { it.copy(uploadState = UploadState.Idle) }
+            }
+        }
+    }
+
+    /** Google Tasks의 due(RFC3339 UTC 자정)를 날짜로 변환 */
+    private fun parseDueDate(due: String?): LocalDate? {
+        if (due.isNullOrBlank()) return null
+        return runCatching {
+            // "2026-09-26T00:00:00.000Z" 형태 — 앞 10자리가 날짜
+            LocalDate.parse(due.take(10))
+        }.getOrNull()
     }
 
     /** GitHub 최신 릴리즈를 확인하여 더 높은 버전이 있으면 updateInfo 설정 */

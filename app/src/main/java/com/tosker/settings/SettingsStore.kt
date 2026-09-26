@@ -41,14 +41,18 @@ object CategoryDefaults {
     fun defaultColor(index: Int): Long =
         palette[index % palette.size]
 
+    /** "2day"처럼 오늘 할 일 전용 목록인지 판별 */
+    fun isTodayList(title: String): Boolean {
+        val clean = title.trim().lowercase()
+        return todayKeywords.any { clean.contains(it) }
+    }
+
     /**
      * 사용자가 순서를 지정하지 않았을 때의 기본 순서.
      * 오늘 할 일 목록(2day 등)은 -1을 반환해 항상 맨 앞에 오게 한다.
      */
-    fun defaultOrder(index: Int, title: String): Int {
-        val clean = title.trim().lowercase()
-        return if (todayKeywords.any { clean.contains(it) }) -1 else index
-    }
+    fun defaultOrder(index: Int, title: String): Int =
+        if (isTodayList(title)) -1 else index
 }
 
 class SettingsStore(context: Context) {

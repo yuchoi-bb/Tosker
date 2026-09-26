@@ -2,6 +2,7 @@ package com.tosker.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
@@ -78,6 +79,11 @@ fun ToskerDialog(
     onUpdateClick: (com.tosker.update.UpdateInfo) -> Unit,
     onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
     onMoveList: (id: String, up: Boolean) -> Unit,
+    onOpenTodayTasks: () -> Unit,
+    onToggleTodayTask: (taskId: String, listId: String) -> Unit,
+    onMoveToTodayList: () -> Unit,
+    onCloseTodayTasks: () -> Unit,
+    todayListTitle: String?,
     initialApiKey: String,
     onApiKeySave: (String) -> Unit,
     onReviewItemChange: (index: Int, included: Boolean?, destination: UploadDestination?, title: String?) -> Unit,
@@ -152,6 +158,21 @@ fun ToskerDialog(
                             }
                         ) { _, dragAmount ->
                             if (dragAmount > 0) totalDrag += dragAmount
+                        }
+                    }
+                    // 우→좌 스와이프 시 "오늘 할일" 화면 열기
+                    .pointerInput(Unit) {
+                        var totalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { totalDrag = 0f },
+                            onDragEnd = {
+                                if (totalDrag < -80f) {
+                                    focusManager.clearFocus()
+                                    onOpenTodayTasks()
+                                }
+                            }
+                        ) { _, dragAmount ->
+                            if (dragAmount < 0) totalDrag += dragAmount
                         }
                     },
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -383,6 +404,15 @@ fun ToskerDialog(
             }
         },
         dismissButton = null
+    )
+
+    // 오늘 할일 화면 (우→좌 스와이프)
+    TodayTasksDialog(
+        state = uiState.todayTasksState,
+        todayListTitle = todayListTitle,
+        onToggle = onToggleTodayTask,
+        onMove = onMoveToTodayList,
+        onDismiss = onCloseTodayTasks
     )
 
     // 설정 창

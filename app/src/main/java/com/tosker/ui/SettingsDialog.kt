@@ -5,10 +5,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -26,6 +28,7 @@ import com.tosker.settings.CategoryDefaults
 import com.tosker.settings.ListConfig
 import com.tosker.viewmodel.TaskListItem
 import com.tosker.viewmodel.UiState
+import com.tosker.viewmodel.orderedTaskLists
 
 /**
  * 설정 창. Google Tasks 목록별 버튼 이름/색상 설정과,
@@ -36,6 +39,7 @@ fun SettingsDialog(
     uiState: UiState,
     initialApiKey: String,
     onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
+    onMoveList: (id: String, up: Boolean) -> Unit,
     onApiKeySave: (String) -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit
@@ -93,24 +97,35 @@ fun SettingsDialog(
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            "버튼 이름과 색상 설정",
+                            "버튼 이름·색상·순서 설정",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.outline
                         )
+                        Text(
+                            "▲▼ 로 버튼 순서를 바꿀 수 있습니다. 맨 위가 최좌측 버튼입니다.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        val ordered = orderedTaskLists(uiState.taskLists, uiState.listConfigs)
                         LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(14.dp),
                             modifier = Modifier.heightIn(max = 280.dp)
                         ) {
-                            items(uiState.taskLists, key = { it.id }) { list ->
-                                val index = uiState.taskLists.indexOf(list)
+                            itemsIndexed(ordered, key = { _, entry -> entry.item.id }) { pos, entry ->
                                 ListConfigRow(
-                                    list = list,
-                                    config = uiState.listConfigs[list.id]
+                                    list = entry.item,
+                                    position = pos,
+                                    config = uiState.listConfigs[entry.item.id]
                                         ?: ListConfig(
-                                            label = CategoryDefaults.defaultLabel(index, list.title),
-                                            colorHex = CategoryDefaults.defaultColor(index)
+                                            label = CategoryDefaults.defaultLabel(
+                                                entry.apiIndex, entry.item.title
+                                            ),
+                                            colorHex = CategoryDefaults.defaultColor(entry.apiIndex)
                                         ),
-                                    onConfigChange = onConfigChange
+                                    canMoveUp = pos > 0,
+                                    canMoveDown = pos < ordered.lastIndex,
+                                    onConfigChange = onConfigChange,
+                                    onMoveList = onMoveList
                                 )
                             }
                         }
@@ -138,18 +153,58 @@ fun SettingsDialog(
 @Composable
 private fun ListConfigRow(
     list: TaskListItem,
+    position: Int,
     config: ListConfig,
-    onConfigChange: (id: String, label: String, colorHex: Long) -> Unit
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
+    onMoveList: (id: String, up: Boolean) -> Unit
 ) {
     var label by remember(list.id) { mutableStateOf(config.label) }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        // 원본 Tasks 목록 이름
-        Text(
-            text = list.title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium
-        )
+        // 순서 번호 + 원본 Tasks 목록 이름 + 순서 이동 버튼
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${position + 1}.",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.outline
+            )
+            Spacer(Modifier.size(6.dp))
+            Text(
+                text = list.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(
+                onClick = { onMoveList(list.id, true) },
+                enabled = canMoveUp,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.KeyboardArrowUp,
+                    contentDescription = "위로 이동",
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            IconButton(
+                onClick = { onMoveList(list.id, false) },
+                enabled = canMoveDown,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = "아래로 이동",
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
 
         // 표시 이름 입력
         OutlinedTextField(

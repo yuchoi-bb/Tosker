@@ -43,6 +43,7 @@ fun ToskerApp(
             onAnalyzeDocumentText = viewModel::analyzeDocumentText,
             onUpdateClick = onUpdateClick,
             onConfigChange = viewModel::updateListConfig,
+            onMoveList = viewModel::moveList,
             initialApiKey = viewModel.loadGeminiApiKey(),
             onApiKeySave = viewModel::saveGeminiApiKey,
             onReviewItemChange = viewModel::updateReviewItem,

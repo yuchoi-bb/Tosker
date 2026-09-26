@@ -5,8 +5,13 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import org.json.JSONObject
 
-/** 목록별 버튼 설정 (표시 이름 + 색상 ARGB) */
-data class ListConfig(val label: String, val colorHex: Long)
+/** 목록별 버튼 설정 (표시 이름 + 색상 ARGB + 버튼 표시 순서) */
+data class ListConfig(
+    val label: String,
+    val colorHex: Long,
+    /** 버튼이 표시될 순서. null이면 기본 순서(CategoryDefaults.defaultOrder)를 따른다. */
+    val order: Int? = null
+)
 
 /** 기본 라벨/색상 팔레트. 설정되지 않은 목록에 적용됩니다. */
 object CategoryDefaults {
@@ -23,12 +28,27 @@ object CategoryDefaults {
 
     private val defaultLabels = listOf("P", "W", "S", "R")
 
-    fun defaultLabel(index: Int, title: String): String =
-        defaultLabels.getOrNull(index)
-            ?: title.trim().take(1).uppercase().ifBlank { "?" }
+    /** "오늘 할 일" 성격의 목록은 기본으로 맨 앞(최좌측)에 배치한다. */
+    private val todayKeywords = listOf("2day", "today", "투데이", "오늘")
+
+    fun defaultLabel(index: Int, title: String): String {
+        val clean = title.trim()
+        // 기본 4개는 기존 P/W/S/R 라벨을 유지하고, 그 이후 목록은 제목을 그대로 쓴다.
+        return defaultLabels.getOrNull(index)
+            ?: clean.take(6).ifBlank { "?" }
+    }
 
     fun defaultColor(index: Int): Long =
         palette[index % palette.size]
+
+    /**
+     * 사용자가 순서를 지정하지 않았을 때의 기본 순서.
+     * 오늘 할 일 목록(2day 등)은 -1을 반환해 항상 맨 앞에 오게 한다.
+     */
+    fun defaultOrder(index: Int, title: String): Int {
+        val clean = title.trim().lowercase()
+        return if (todayKeywords.any { clean.contains(it) }) -1 else index
+    }
 }
 
 class SettingsStore(context: Context) {
@@ -71,7 +91,8 @@ class SettingsStore(context: Context) {
                         id,
                         ListConfig(
                             label = o.getString("label"),
-                            colorHex = o.getString("color").toLong(16)
+                            colorHex = o.getString("color").toLong(16),
+                            order = if (o.has("order")) o.getInt("order") else null
                         )
                     )
                 }
@@ -80,16 +101,20 @@ class SettingsStore(context: Context) {
     }
 
     fun saveConfig(id: String, config: ListConfig) {
+        saveConfigs(mapOf(id to config))
+    }
+
+    /** 여러 목록의 설정을 한 번에 저장한다(순서 변경 시 전체 재작성). */
+    fun saveConfigs(configs: Map<String, ListConfig>) {
         val current = loadConfigs().toMutableMap()
-        current[id] = config
+        current.putAll(configs)
         val obj = JSONObject()
         current.forEach { (k, v) ->
-            obj.put(
-                k,
-                JSONObject()
-                    .put("label", v.label)
-                    .put("color", java.lang.Long.toHexString(v.colorHex))
-            )
+            val entry = JSONObject()
+                .put("label", v.label)
+                .put("color", java.lang.Long.toHexString(v.colorHex))
+            v.order?.let { entry.put("order", it) }
+            obj.put(k, entry)
         }
         prefs.edit().putString(KEY_CONFIGS, obj.toString()).apply()
     }

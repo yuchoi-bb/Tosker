@@ -18,6 +18,7 @@ import com.google.api.services.tasks.TasksScopes
 import com.google.api.services.tasks.model.Task
 import com.tosker.ai.ExtractedEvent
 import com.tosker.ai.GeminiClient
+import com.tosker.settings.CategoryDefaults
 import com.tosker.settings.ListConfig
 import com.tosker.settings.SettingsStore
 import com.tosker.update.UpdateChecker
@@ -49,6 +50,24 @@ sealed class UploadState {
 }
 
 data class TaskListItem(val id: String, val title: String)
+
+/** 화면에 표시할 목록 하나. [apiIndex]는 Google Tasks가 준 원래 순번(기본 라벨/색상 기준). */
+data class OrderedTaskList(val item: TaskListItem, val apiIndex: Int)
+
+/**
+ * 사용자가 지정한 순서(ListConfig.order)대로 목록을 정렬한다.
+ * 순서가 없는 목록은 기본 순서를 쓰며, "2day" 같은 오늘 할 일 목록이 맨 앞에 온다.
+ */
+fun orderedTaskLists(
+    taskLists: List<TaskListItem>,
+    configs: Map<String, ListConfig>
+): List<OrderedTaskList> =
+    taskLists
+        .mapIndexed { index, item -> OrderedTaskList(item, index) }
+        .sortedBy { entry ->
+            configs[entry.item.id]?.order
+                ?: CategoryDefaults.defaultOrder(entry.apiIndex, entry.item.title)
+        }
 
 /** 문서 스캔으로 추출된 일정 하나를 어디에 올릴지 선택하는 대상 */
 enum class UploadDestination { CALENDAR, TASK, BOTH }
@@ -101,9 +120,40 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
     private var tasksService: Tasks? = null
     private var calendarService: Calendar? = null
 
-    /** 설정 화면에서 목록 버튼의 이름/색상을 변경하고 영구 저장 */
+    /** 설정 화면에서 목록 버튼의 이름/색상을 변경하고 영구 저장 (순서는 유지) */
     fun updateListConfig(id: String, label: String, colorHex: Long) {
-        settingsStore.saveConfig(id, ListConfig(label, colorHex))
+        val existingOrder = _uiState.value.listConfigs[id]?.order
+        settingsStore.saveConfig(id, ListConfig(label, colorHex, existingOrder))
+        _uiState.update { it.copy(listConfigs = settingsStore.loadConfigs()) }
+    }
+
+    /**
+     * 목록 버튼의 표시 순서를 한 칸 앞/뒤로 이동한다.
+     * 이동 후 모든 목록에 명시적 순서를 부여해 저장한다.
+     */
+    fun moveList(id: String, up: Boolean) {
+        val state = _uiState.value
+        val ordered = orderedTaskLists(state.taskLists, state.listConfigs).toMutableList()
+        val pos = ordered.indexOfFirst { it.item.id == id }
+        if (pos < 0) return
+        val target = if (up) pos - 1 else pos + 1
+        if (target !in ordered.indices) return
+
+        val moved = ordered.removeAt(pos)
+        ordered.add(target, moved)
+
+        val updated = ordered.mapIndexed { newOrder, entry ->
+            val existing = state.listConfigs[entry.item.id]
+            entry.item.id to ListConfig(
+                label = existing?.label
+                    ?: CategoryDefaults.defaultLabel(entry.apiIndex, entry.item.title),
+                colorHex = existing?.colorHex
+                    ?: CategoryDefaults.defaultColor(entry.apiIndex),
+                order = newOrder
+            )
+        }.toMap()
+
+        settingsStore.saveConfigs(updated)
         _uiState.update { it.copy(listConfigs = settingsStore.loadConfigs()) }
     }
 

@@ -33,6 +33,7 @@ import com.tosker.viewmodel.TaskListItem
 import com.tosker.viewmodel.UiState
 import com.tosker.viewmodel.UploadDestination
 import com.tosker.viewmodel.UploadState
+import com.tosker.viewmodel.orderedTaskLists
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -76,6 +77,7 @@ fun ToskerDialog(
     onAnalyzeDocumentText: (String) -> Unit,
     onUpdateClick: (com.tosker.update.UpdateInfo) -> Unit,
     onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
+    onMoveList: (id: String, up: Boolean) -> Unit,
     initialApiKey: String,
     onApiKeySave: (String) -> Unit,
     onReviewItemChange: (index: Int, included: Boolean?, destination: UploadDestination?, title: String?) -> Unit,
@@ -193,16 +195,26 @@ fun ToskerDialog(
                     }
                 }
 
-                // 카테고리 동그라미 버튼 - 실제 Tasks 목록 + 사용자 설정(이름/색상)
+                // 카테고리 동그라미 버튼 - 실제 Tasks 목록 + 사용자 설정(이름/색상/순서)
+                val orderedLists = orderedTaskLists(uiState.taskLists, uiState.listConfigs)
+                // 목록이 많아지면 한 줄에 들어가도록 원 크기를 줄인다.
+                val circleSize = when {
+                    orderedLists.size >= 6 -> 40.dp
+                    orderedLists.size == 5 -> 44.dp
+                    else -> 52.dp
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    uiState.taskLists.forEachIndexed { index, taskList ->
+                    orderedLists.forEach { entry ->
+                        val taskList = entry.item
                         val config = uiState.listConfigs[taskList.id]
                         val label = config?.label
-                            ?: CategoryDefaults.defaultLabel(index, taskList.title)
-                        val color = Color(config?.colorHex ?: CategoryDefaults.defaultColor(index))
+                            ?: CategoryDefaults.defaultLabel(entry.apiIndex, taskList.title)
+                        val color = Color(
+                            config?.colorHex ?: CategoryDefaults.defaultColor(entry.apiIndex)
+                        )
                         val isSelected = uiState.selectedTaskList?.id == taskList.id
 
                         Column(
@@ -211,12 +223,12 @@ fun ToskerDialog(
                             modifier = Modifier
                                 .clip(CircleShape)
                                 .clickable { onTaskListSelect(taskList) }
-                                .padding(4.dp)
+                                .padding(2.dp)
                         ) {
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
-                                    .size(52.dp)
+                                    .size(circleSize)
                                     .clip(CircleShape)
                                     .background(
                                         if (isSelected) color else color.copy(alpha = 0.18f)
@@ -231,7 +243,7 @@ fun ToskerDialog(
                             }
                             Text(
                                 text = label,
-                                style = MaterialTheme.typography.labelMedium,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                 maxLines = 1,
                                 color = if (isSelected) color
@@ -379,6 +391,7 @@ fun ToskerDialog(
             uiState = uiState,
             initialApiKey = initialApiKey,
             onConfigChange = onConfigChange,
+            onMoveList = onMoveList,
             onApiKeySave = onApiKeySave,
             onSignOut = {
                 showSettings = false

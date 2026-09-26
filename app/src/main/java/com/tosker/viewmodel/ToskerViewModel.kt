@@ -330,7 +330,10 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update { it.copy(todayTasksState = TodayTasksState.Loading) }
 
             val today = LocalDate.now()
-            val sourceLists = state.taskLists.filter { it.id != todayList?.id }
+            // 버튼과 같은 순서(개인 → W → 운동 → 반복)로 훑어야 목록별로 묶여서 나온다.
+            val sourceLists = orderedTaskLists(state.taskLists, state.listConfigs)
+                .map { it.item }
+                .filter { it.id != todayList?.id }
 
             val result = withContext(Dispatchers.IO) {
                 runCatching {
@@ -370,8 +373,9 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                                 due = dueDate,
                                 notes = task.notes
                             )
-                        }
-                    }.sortedWith(compareBy({ it.due }, { it.title }))
+                        }.sortedWith(compareBy({ it.due }, { it.title }))
+                        // 목록 안에서만 마감일 순으로 정렬해 목록별 묶음을 유지한다.
+                    }
                 }
             }
 

@@ -11,6 +11,8 @@ import com.google.api.client.json.gson.GsonFactory
 import com.google.api.client.util.DateTime
 import com.google.api.services.calendar.Calendar
 import com.google.api.services.calendar.CalendarScopes
+import com.google.api.services.drive.Drive
+import com.google.api.services.drive.DriveScopes
 import com.google.api.services.calendar.model.Event
 import com.google.api.services.calendar.model.EventDateTime
 import com.google.api.services.tasks.Tasks
@@ -22,8 +24,10 @@ import com.tosker.settings.CategoryDefaults
 import com.tosker.settings.ListConfig
 import com.tosker.settings.SettingsStore
 import com.tosker.settings.ShortcutConfig
+import com.tosker.sync.DriveSettingsSync
 import com.tosker.update.UpdateChecker
 import com.tosker.update.UpdateInfo
+import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -132,8 +136,18 @@ data class UiState(
     val documentScanState: DocumentScanState = DocumentScanState.Idle,
     val todayTasksState: TodayTasksState = TodayTasksState.Hidden,
     /** Upload 아래 단축버튼 (슬롯 0~9) */
-    val shortcuts: Map<Int, ShortcutConfig> = emptyMap()
+    val shortcuts: Map<Int, ShortcutConfig> = emptyMap(),
+    /** 설정의 기기 간 동기화 상태 */
+    val syncState: SyncState = SyncState.Idle
 )
+
+/** 설정 동기화(Google Drive 앱 전용 폴더) 상태 */
+sealed class SyncState {
+    object Idle : SyncState()
+    object Syncing : SyncState()
+    data class Synced(val at: Long) : SyncState()
+    data class Error(val message: String) : SyncState()
+}
 
 class ToskerViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -149,12 +163,94 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
 
     private var tasksService: Tasks? = null
     private var calendarService: Calendar? = null
+    private var settingsSync: DriveSettingsSync? = null
+
+    // ── 설정 기기 간 동기화 (Google Drive 앱 전용 폴더) ──────────────
+
+    /**
+     * 기기의 설정과 Drive에 저장된 설정을 맞춘다.
+     * 더 최근에 바뀐 쪽이 이긴다(마지막 저장 우선).
+     * 동기화에 실패해도 기기 내 설정은 그대로 쓰므로 앱 동작에는 지장이 없다.
+     */
+    fun syncSettings() {
+        val sync = settingsSync ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(syncState = SyncState.Syncing) }
+
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val remoteJson = sync.download()
+                    val localUpdatedAt = settingsStore.loadUpdatedAt()
+                    val remoteUpdatedAt = remoteJson
+                        ?.let { runCatching { JSONObject(it).optLong("updatedAt", 0L) }.getOrDefault(0L) }
+                        ?: 0L
+
+                    when {
+                        // 원격이 더 최신이면 내려받아 적용
+                        remoteJson != null && remoteUpdatedAt > localUpdatedAt -> {
+                            settingsStore.importJson(remoteJson)
+                            true
+                        }
+                        // 기기 쪽이 더 최신이거나 원격이 없으면 올린다
+                        localUpdatedAt > remoteUpdatedAt -> {
+                            sync.upload(settingsStore.exportJson())
+                            true
+                        }
+                        else -> true // 이미 같음
+                    }
+                }
+            }
+
+            _uiState.update {
+                if (result.isSuccess) {
+                    it.copy(
+                        listConfigs = settingsStore.loadConfigs(),
+                        shortcuts = settingsStore.loadShortcuts(),
+                        syncState = SyncState.Synced(System.currentTimeMillis())
+                    )
+                } else {
+                    it.copy(syncState = SyncState.Error(syncErrorMessage(result.exceptionOrNull())))
+                }
+            }
+        }
+    }
+
+    /** 설정이 바뀔 때마다 조용히 Drive에 올린다(실패해도 기기 설정은 유지). */
+    private fun pushSettings() {
+        val sync = settingsSync ?: return
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { sync.upload(settingsStore.exportJson()) }
+            }
+            _uiState.update {
+                if (result.isSuccess) {
+                    it.copy(syncState = SyncState.Synced(System.currentTimeMillis()))
+                } else {
+                    it.copy(syncState = SyncState.Error(syncErrorMessage(result.exceptionOrNull())))
+                }
+            }
+        }
+    }
+
+    private fun syncErrorMessage(e: Throwable?): String {
+        val raw = e?.message ?: "알 수 없는 오류"
+        return when {
+            raw.contains("Drive API has not been used", ignoreCase = true) ||
+                    raw.contains("accessNotConfigured", ignoreCase = true) ->
+                "Google Cloud 프로젝트에서 Drive API를 사용 설정해야 합니다."
+            raw.contains("insufficient", ignoreCase = true) ||
+                    raw.contains("403") ->
+                "Drive 권한이 없습니다. 로그아웃 후 다시 로그인해 권한을 허용하세요."
+            else -> raw.take(120)
+        }
+    }
 
     /** 설정 화면에서 목록 버튼의 이름/색상을 변경하고 영구 저장 (순서는 유지) */
     fun updateListConfig(id: String, label: String, colorHex: Long) {
         val existingOrder = _uiState.value.listConfigs[id]?.order
         settingsStore.saveConfig(id, ListConfig(label, colorHex, existingOrder))
         _uiState.update { it.copy(listConfigs = settingsStore.loadConfigs()) }
+        pushSettings()
     }
 
     /**
@@ -185,6 +281,7 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
 
         settingsStore.saveConfigs(updated)
         _uiState.update { it.copy(listConfigs = settingsStore.loadConfigs()) }
+        pushSettings()
     }
 
     fun onSignInSuccess(account: GoogleSignInAccount, context: Context) {
@@ -194,7 +291,11 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
             // Tasks + Calendar API 서비스 초기화 (OAuth 액세스 토큰만 사용, Firebase 불필요)
             val credential = GoogleAccountCredential.usingOAuth2(
                 context,
-                setOf(TasksScopes.TASKS, CalendarScopes.CALENDAR_EVENTS)
+                setOf(
+                    TasksScopes.TASKS,
+                    CalendarScopes.CALENDAR_EVENTS,
+                    DriveScopes.DRIVE_APPDATA
+                )
             )
             credential.selectedAccount = account.account
             tasksService = Tasks.Builder(
@@ -207,6 +308,13 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                 GsonFactory.getDefaultInstance(),
                 credential
             ).setApplicationName("Tosker").build()
+            settingsSync = DriveSettingsSync(
+                Drive.Builder(
+                    NetHttpTransport(),
+                    GsonFactory.getDefaultInstance(),
+                    credential
+                ).setApplicationName("Tosker").build()
+            )
 
             _uiState.update {
                 it.copy(
@@ -218,6 +326,7 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                 )
             }
             loadTaskLists()
+            syncSettings()
         }
     }
 
@@ -228,10 +337,12 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
     fun setLoggedOut() {
         tasksService = null
         calendarService = null
+        settingsSync = null
         _uiState.update {
             UiState(
                 authState = AuthState.LoggedOut,
-                listConfigs = it.listConfigs
+                listConfigs = it.listConfigs,
+                shortcuts = it.shortcuts
             )
         }
     }
@@ -325,11 +436,13 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
             )
         )
         _uiState.update { it.copy(shortcuts = settingsStore.loadShortcuts()) }
+        pushSettings()
     }
 
     fun deleteShortcut(slot: Int) {
         settingsStore.deleteShortcut(slot)
         _uiState.update { it.copy(shortcuts = settingsStore.loadShortcuts()) }
+        pushSettings()
     }
 
     /**

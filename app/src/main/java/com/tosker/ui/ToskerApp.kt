@@ -45,6 +45,7 @@ fun ToskerApp(
             onConfigChange = viewModel::updateListConfig,
             onMoveList = viewModel::moveList,
             onOpenTodayTasks = viewModel::openTodayTasks,
+            onSyncNow = viewModel::syncSettings,
             onRunShortcut = viewModel::runShortcut,
             onSaveShortcut = viewModel::saveShortcut,
             onDeleteShortcut = viewModel::deleteShortcut,

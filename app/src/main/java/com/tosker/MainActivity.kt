@@ -27,6 +27,7 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.calendar.CalendarScopes
+import com.google.api.services.drive.DriveScopes
 import com.google.api.services.tasks.TasksScopes
 import com.tosker.ui.ToskerApp
 import com.tosker.update.UpdateInfo
@@ -241,16 +242,20 @@ class MainActivity : ComponentActivity() {
 
         val tasksScope = Scope(TasksScopes.TASKS)
         val calendarScope = Scope(CalendarScopes.CALENDAR_EVENTS)
+        // 설정을 기기 간 동기화하기 위한 Drive 앱 전용 폴더 접근 권한
+        val driveAppDataScope = Scope(DriveScopes.DRIVE_APPDATA)
 
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(tasksScope, calendarScope)
+            .requestScopes(tasksScope, calendarScope, driveAppDataScope)
             .build()
 
         googleSignInClient = GoogleSignIn.getClient(this, gso)
 
         val lastAccount = GoogleSignIn.getLastSignedInAccount(this)
-        if (lastAccount != null && GoogleSignIn.hasPermissions(lastAccount, tasksScope, calendarScope)) {
+        if (lastAccount != null &&
+            GoogleSignIn.hasPermissions(lastAccount, tasksScope, calendarScope, driveAppDataScope)
+        ) {
             viewModel.onSignInSuccess(lastAccount, this)
         } else {
             viewModel.setLoggedOut()

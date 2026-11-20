@@ -108,6 +108,10 @@ dependencies {
     implementation('com.google.apis:google-api-services-calendar:v3-rev20220715-2.0.0') {
         exclude group: 'org.apache.httpcomponents'
     }
+    // 설정을 기기 간 동기화하기 위한 Drive 앱 전용 폴더(appDataFolder) 접근
+    implementation('com.google.apis:google-api-services-drive:v3-rev20220815-2.0.0') {
+        exclude group: 'org.apache.httpcomponents'
+    }
     implementation 'com.google.http-client:google-http-client-gson:1.44.1'
 
     // 문서 스캔용 Gemini API 키를 기기에 암호화 저장

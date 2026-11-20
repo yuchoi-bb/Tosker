@@ -28,6 +28,7 @@ import com.tosker.settings.CategoryDefaults
 import com.tosker.settings.ListConfig
 import com.tosker.viewmodel.TaskListItem
 import com.tosker.viewmodel.UiState
+import com.tosker.viewmodel.SyncState
 import com.tosker.viewmodel.orderedTaskLists
 
 /**
@@ -41,6 +42,7 @@ fun SettingsDialog(
     onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
     onMoveList: (id: String, up: Boolean) -> Unit,
     onApiKeySave: (String) -> Unit,
+    onSyncNow: () -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -85,6 +87,52 @@ fun SettingsDialog(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )
+                }
+
+                Divider()
+
+                // 기기 간 설정 동기화 상태
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "기기 간 설정 동기화",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        TextButton(
+                            onClick = onSyncNow,
+                            enabled = uiState.syncState !is SyncState.Syncing
+                        ) { Text("지금 동기화") }
+                    }
+                    when (val sync = uiState.syncState) {
+                        is SyncState.Syncing -> Text(
+                            "동기화 중...",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        is SyncState.Synced -> Text(
+                            "동기화됨 · ${
+                                java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA)
+                                    .format(java.util.Date(sync.at))
+                            }",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        is SyncState.Error -> Text(
+                            sync.message,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        else -> Text(
+                            "단축버튼·버튼 설정이 Google 계정에 저장되어 다른 기기에서도 쓰입니다.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
                 }
 
                 Divider()

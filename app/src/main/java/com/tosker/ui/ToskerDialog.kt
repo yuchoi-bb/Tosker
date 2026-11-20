@@ -80,6 +80,7 @@ fun ToskerDialog(
     onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
     onMoveList: (id: String, up: Boolean) -> Unit,
     onOpenTodayTasks: () -> Unit,
+    onSyncNow: () -> Unit,
     onRunShortcut: (slot: Int) -> Unit,
     onSaveShortcut: (slot: Int, title: String, iconKey: String, colorHex: Long, listId: String?) -> Unit,
     onDeleteShortcut: (slot: Int) -> Unit,
@@ -460,6 +461,7 @@ fun ToskerDialog(
             onConfigChange = onConfigChange,
             onMoveList = onMoveList,
             onApiKeySave = onApiKeySave,
+            onSyncNow = onSyncNow,
             onSignOut = {
                 showSettings = false
                 onSignOut()

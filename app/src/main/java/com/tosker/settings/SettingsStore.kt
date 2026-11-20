@@ -134,6 +134,7 @@ class SettingsStore(context: Context) {
             obj.put(k, entry)
         }
         prefs.edit().putString(KEY_CONFIGS, obj.toString()).apply()
+        touch()
     }
 
     /** 단축버튼 설정을 슬롯 번호(0~9) → 설정으로 반환 */
@@ -185,11 +186,70 @@ class SettingsStore(context: Context) {
             obj.put(slot.toString(), entry)
         }
         prefs.edit().putString(KEY_SHORTCUTS, obj.toString()).apply()
+        touch()
     }
+
+    /** 설정이 마지막으로 바뀐 시각(epoch millis). 동기화 충돌 해결에 쓴다. */
+    fun loadUpdatedAt(): Long = prefs.getLong(KEY_UPDATED_AT, 0L)
+
+    private fun touch() {
+        prefs.edit().putLong(KEY_UPDATED_AT, System.currentTimeMillis()).apply()
+    }
+
+    /**
+     * 동기화할 설정 전체를 JSON으로 내보낸다.
+     * Gemini API 키는 민감 정보라 제외한다.
+     */
+    fun exportJson(): String {
+        val listConfigs = JSONObject()
+        loadConfigs().forEach { (id, v) ->
+            val entry = JSONObject()
+                .put("label", v.label)
+                .put("color", java.lang.Long.toHexString(v.colorHex))
+            v.order?.let { entry.put("order", it) }
+            listConfigs.put(id, entry)
+        }
+
+        val shortcuts = JSONObject()
+        loadShortcuts().forEach { (slot, v) ->
+            val entry = JSONObject()
+                .put("title", v.title)
+                .put("icon", v.iconKey)
+                .put("color", java.lang.Long.toHexString(v.colorHex))
+            v.listId?.let { entry.put("listId", it) }
+            shortcuts.put(slot.toString(), entry)
+        }
+
+        return JSONObject()
+            .put("version", 1)
+            .put("updatedAt", loadUpdatedAt())
+            .put("listConfigs", listConfigs)
+            .put("shortcuts", shortcuts)
+            .toString()
+    }
+
+    /**
+     * 내보낸 JSON을 이 기기에 그대로 적용한다.
+     * 성공하면 true, 형식이 잘못되면 아무것도 바꾸지 않고 false.
+     */
+    fun importJson(json: String): Boolean = runCatching {
+        val obj = JSONObject(json)
+        val listConfigs = obj.optJSONObject("listConfigs") ?: JSONObject()
+        val shortcuts = obj.optJSONObject("shortcuts") ?: JSONObject()
+        val remoteUpdatedAt = obj.optLong("updatedAt", 0L)
+
+        prefs.edit()
+            .putString(KEY_CONFIGS, listConfigs.toString())
+            .putString(KEY_SHORTCUTS, shortcuts.toString())
+            .putLong(KEY_UPDATED_AT, remoteUpdatedAt)
+            .apply()
+        true
+    }.getOrDefault(false)
 
     private companion object {
         const val KEY_CONFIGS = "list_configs"
         const val KEY_GEMINI_API_KEY = "gemini_api_key"
         const val KEY_SHORTCUTS = "shortcuts"
+        const val KEY_UPDATED_AT = "settings_updated_at"
     }
 }

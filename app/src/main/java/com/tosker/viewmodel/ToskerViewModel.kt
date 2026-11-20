@@ -424,7 +424,8 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
         title: String,
         iconKey: String,
         colorHex: Long,
-        listId: String?
+        listId: String?,
+        markCompleted: Boolean
     ) {
         settingsStore.saveShortcut(
             ShortcutConfig(
@@ -432,7 +433,8 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                 title = title.trim(),
                 iconKey = iconKey,
                 colorHex = colorHex,
-                listId = listId
+                listId = listId,
+                markCompleted = markCompleted
             )
         )
         _uiState.update { it.copy(shortcuts = settingsStore.loadShortcuts()) }
@@ -468,8 +470,11 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                     val task = Task().apply {
                         title = shortcut.title
                         due = stamp
-                        status = "completed"
-                        completed = stamp
+                        // 한 일 기록이면 완료 상태로, 해야 할 일이면 미완료로 등록한다.
+                        if (shortcut.markCompleted) {
+                            status = "completed"
+                            completed = stamp
+                        }
                     }
                     service.tasks().insert(targetListId, task).execute()
                 }

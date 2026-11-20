@@ -82,7 +82,7 @@ fun ToskerDialog(
     onOpenTodayTasks: () -> Unit,
     onSyncNow: () -> Unit,
     onRunShortcut: (slot: Int) -> Unit,
-    onSaveShortcut: (slot: Int, title: String, iconKey: String, colorHex: Long, listId: String?) -> Unit,
+    onSaveShortcut: (slot: Int, title: String, iconKey: String, colorHex: Long, listId: String?, markCompleted: Boolean) -> Unit,
     onDeleteShortcut: (slot: Int) -> Unit,
     onToggleTodayTask: (taskId: String, listId: String) -> Unit,
     onMoveToTodayList: () -> Unit,
@@ -432,8 +432,8 @@ fun ToskerDialog(
             taskLists = uiState.taskLists,
             defaultListId = uiState.shortcuts[slot]?.listId
                 ?: uiState.selectedTaskList?.id,
-            onSave = { title, iconKey, colorHex, listId ->
-                onSaveShortcut(slot, title, iconKey, colorHex, listId)
+            onSave = { title, iconKey, colorHex, listId, markCompleted ->
+                onSaveShortcut(slot, title, iconKey, colorHex, listId, markCompleted)
                 editingShortcutSlot = null
             },
             onDelete = {

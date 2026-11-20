@@ -15,7 +15,8 @@ data class ListConfig(
 
 /**
  * Upload 아래 단축버튼 한 칸의 설정.
- * 누르면 [title] 할일이 선택된 날짜에 완료 상태로 [listId] 목록에 등록된다.
+ * 누르면 [title] 할일이 선택된 날짜에 [listId] 목록으로 등록된다.
+ * [markCompleted]가 true면 "한 일"로 완료 상태로, false면 "해야 할 일"로 등록한다.
  */
 data class ShortcutConfig(
     val slot: Int,
@@ -23,7 +24,9 @@ data class ShortcutConfig(
     val iconKey: String,
     val colorHex: Long,
     /** 등록할 목록. null이면 현재 선택된 목록을 쓴다. */
-    val listId: String? = null
+    val listId: String? = null,
+    /** true = 한 일 기록(완료 상태), false = 해야 할 일 등록 */
+    val markCompleted: Boolean = true
 )
 
 /** 기본 라벨/색상 팔레트. 설정되지 않은 목록에 적용됩니다. */
@@ -155,7 +158,9 @@ class SettingsStore(context: Context) {
                             title = o.getString("title"),
                             iconKey = o.getString("icon"),
                             colorHex = o.getString("color").toLong(16),
-                            listId = o.optString("listId").takeIf { it.isNotBlank() }
+                            listId = o.optString("listId").takeIf { it.isNotBlank() },
+                            // 이전 버전 설정에는 없던 값이라 기본은 "한 일 기록"
+                            markCompleted = o.optBoolean("done", true)
                         )
                     )
                 }
@@ -182,6 +187,7 @@ class SettingsStore(context: Context) {
                 .put("title", v.title)
                 .put("icon", v.iconKey)
                 .put("color", java.lang.Long.toHexString(v.colorHex))
+                .put("done", v.markCompleted)
             v.listId?.let { entry.put("listId", it) }
             obj.put(slot.toString(), entry)
         }
@@ -216,6 +222,7 @@ class SettingsStore(context: Context) {
                 .put("title", v.title)
                 .put("icon", v.iconKey)
                 .put("color", java.lang.Long.toHexString(v.colorHex))
+                .put("done", v.markCompleted)
             v.listId?.let { entry.put("listId", it) }
             shortcuts.put(slot.toString(), entry)
         }

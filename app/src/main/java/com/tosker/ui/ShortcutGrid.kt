@@ -10,7 +10,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -99,6 +101,17 @@ fun ShortcutGrid(
                                     tint = color,
                                     modifier = Modifier.size(22.dp)
                                 )
+                                // 해야 할 일 버튼은 우상단에 작은 원 표시로 구분
+                                if (!config.markCompleted) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(3.dp)
+                                            .size(7.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(color)
+                                    )
+                                }
                             }
                             Text(
                                 text = config.title,
@@ -123,7 +136,7 @@ fun ShortcutEditDialog(
     existing: ShortcutConfig?,
     taskLists: List<TaskListItem>,
     defaultListId: String?,
-    onSave: (title: String, iconKey: String, colorHex: Long, listId: String?) -> Unit,
+    onSave: (title: String, iconKey: String, colorHex: Long, listId: String?, markCompleted: Boolean) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -133,6 +146,7 @@ fun ShortcutEditDialog(
         mutableStateOf(existing?.colorHex ?: CategoryDefaults.palette.first())
     }
     var listId by remember(slot) { mutableStateOf(existing?.listId ?: defaultListId) }
+    var markCompleted by remember(slot) { mutableStateOf(existing?.markCompleted ?: true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -150,6 +164,12 @@ fun ShortcutEditDialog(
                     label = { Text("할 일 내용") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
+                )
+
+                SectionLabel("버튼을 누르면")
+                ActionTypePicker(
+                    markCompleted = markCompleted,
+                    onSelect = { markCompleted = it }
                 )
 
                 SectionLabel("등록할 목록")
@@ -172,7 +192,7 @@ fun ShortcutEditDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onSave(title, iconKey, colorHex, listId) },
+                onClick = { onSave(title, iconKey, colorHex, listId, markCompleted) },
                 enabled = title.isNotBlank() && listId != null
             ) { Text("저장") }
         },
@@ -203,6 +223,47 @@ private fun SectionLabel(text: String) {
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.outline
     )
+}
+
+/** "한 일 기록(완료)" / "해야 할 일(미완료)" 선택 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ActionTypePicker(
+    markCompleted: Boolean,
+    onSelect: (Boolean) -> Unit
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FilterChip(
+            selected = markCompleted,
+            onClick = { onSelect(true) },
+            leadingIcon = {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+            },
+            label = {
+                Text("한 일 기록", style = MaterialTheme.typography.labelSmall)
+            },
+            modifier = Modifier.weight(1f)
+        )
+        FilterChip(
+            selected = !markCompleted,
+            onClick = { onSelect(false) },
+            leadingIcon = {
+                Icon(
+                    Icons.Default.RadioButtonUnchecked,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+            },
+            label = {
+                Text("해야 할 일", style = MaterialTheme.typography.labelSmall)
+            },
+            modifier = Modifier.weight(1f)
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -33,11 +33,31 @@ object ShortcutIcons {
         ),
         "음식" to listOf(
             Entry("restaurant", Icons.Filled.Restaurant),
-            Entry("cafe", Icons.Filled.LocalCafe),
-            Entry("breakfast", Icons.Filled.FreeBreakfast),
+            Entry("dining", Icons.Filled.LocalDining),
+            Entry("fastfood", Icons.Filled.Fastfood),
+            Entry("lunch", Icons.Filled.LunchDining),
+            Entry("dinner", Icons.Filled.DinnerDining),
+            Entry("ramen", Icons.Filled.RamenDining),
+            Entry("ricebowl", Icons.Filled.RiceBowl),
+            Entry("setmeal", Icons.Filled.SetMeal),
+            Entry("bakery", Icons.Filled.BakeryDining),
             Entry("pizza", Icons.Filled.LocalPizza),
+            Entry("egg", Icons.Filled.Egg),
+            Entry("cookie", Icons.Filled.Cookie),
+            Entry("icecream", Icons.Filled.Icecream),
             Entry("cake", Icons.Filled.Cake),
+            Entry("breakfast", Icons.Filled.FreeBreakfast),
+            Entry("cafe", Icons.Filled.LocalCafe),
+            Entry("tea", Icons.Filled.EmojiFoodBeverage),
             Entry("kitchen", Icons.Filled.Kitchen)
+        ),
+        "술·음료" to listOf(
+            Entry("liquor", Icons.Filled.Liquor),
+            Entry("wine", Icons.Filled.WineBar),
+            Entry("beer", Icons.Filled.SportsBar),
+            Entry("cocktail", Icons.Filled.LocalBar),
+            Entry("nightlife", Icons.Filled.Nightlife),
+            Entry("nodrinks", Icons.Filled.NoDrinks)
         ),
         "업무·공부" to listOf(
             Entry("work", Icons.Filled.Work),

@@ -13,6 +13,19 @@ data class ListConfig(
     val order: Int? = null
 )
 
+/**
+ * Upload 아래 단축버튼 한 칸의 설정.
+ * 누르면 [title] 할일이 선택된 날짜에 완료 상태로 [listId] 목록에 등록된다.
+ */
+data class ShortcutConfig(
+    val slot: Int,
+    val title: String,
+    val iconKey: String,
+    val colorHex: Long,
+    /** 등록할 목록. null이면 현재 선택된 목록을 쓴다. */
+    val listId: String? = null
+)
+
 /** 기본 라벨/색상 팔레트. 설정되지 않은 목록에 적용됩니다. */
 object CategoryDefaults {
     val palette = listOf(
@@ -123,8 +136,60 @@ class SettingsStore(context: Context) {
         prefs.edit().putString(KEY_CONFIGS, obj.toString()).apply()
     }
 
+    /** 단축버튼 설정을 슬롯 번호(0~9) → 설정으로 반환 */
+    fun loadShortcuts(): Map<Int, ShortcutConfig> {
+        val raw = prefs.getString(KEY_SHORTCUTS, null) ?: return emptyMap()
+        return runCatching {
+            val obj = JSONObject(raw)
+            buildMap {
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val slot = key.toIntOrNull() ?: continue
+                    val o = obj.getJSONObject(key)
+                    put(
+                        slot,
+                        ShortcutConfig(
+                            slot = slot,
+                            title = o.getString("title"),
+                            iconKey = o.getString("icon"),
+                            colorHex = o.getString("color").toLong(16),
+                            listId = o.optString("listId").takeIf { it.isNotBlank() }
+                        )
+                    )
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    fun saveShortcut(config: ShortcutConfig) {
+        val current = loadShortcuts().toMutableMap()
+        current[config.slot] = config
+        writeShortcuts(current)
+    }
+
+    fun deleteShortcut(slot: Int) {
+        val current = loadShortcuts().toMutableMap()
+        current.remove(slot)
+        writeShortcuts(current)
+    }
+
+    private fun writeShortcuts(shortcuts: Map<Int, ShortcutConfig>) {
+        val obj = JSONObject()
+        shortcuts.forEach { (slot, v) ->
+            val entry = JSONObject()
+                .put("title", v.title)
+                .put("icon", v.iconKey)
+                .put("color", java.lang.Long.toHexString(v.colorHex))
+            v.listId?.let { entry.put("listId", it) }
+            obj.put(slot.toString(), entry)
+        }
+        prefs.edit().putString(KEY_SHORTCUTS, obj.toString()).apply()
+    }
+
     private companion object {
         const val KEY_CONFIGS = "list_configs"
         const val KEY_GEMINI_API_KEY = "gemini_api_key"
+        const val KEY_SHORTCUTS = "shortcuts"
     }
 }

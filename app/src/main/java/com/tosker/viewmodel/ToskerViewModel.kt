@@ -21,6 +21,7 @@ import com.tosker.ai.GeminiClient
 import com.tosker.settings.CategoryDefaults
 import com.tosker.settings.ListConfig
 import com.tosker.settings.SettingsStore
+import com.tosker.settings.ShortcutConfig
 import com.tosker.update.UpdateChecker
 import com.tosker.update.UpdateInfo
 import kotlinx.coroutines.Dispatchers
@@ -129,7 +130,9 @@ data class UiState(
     val updateInfo: UpdateInfo? = null,
     val listConfigs: Map<String, ListConfig> = emptyMap(),
     val documentScanState: DocumentScanState = DocumentScanState.Idle,
-    val todayTasksState: TodayTasksState = TodayTasksState.Hidden
+    val todayTasksState: TodayTasksState = TodayTasksState.Hidden,
+    /** Upload 아래 단축버튼 (슬롯 0~9) */
+    val shortcuts: Map<Int, ShortcutConfig> = emptyMap()
 )
 
 class ToskerViewModel(application: Application) : AndroidViewModel(application) {
@@ -137,7 +140,10 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
     private val settingsStore = SettingsStore(application)
 
     private val _uiState = MutableStateFlow(
-        UiState(listConfigs = settingsStore.loadConfigs())
+        UiState(
+            listConfigs = settingsStore.loadConfigs(),
+            shortcuts = settingsStore.loadShortcuts()
+        )
     )
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
@@ -298,6 +304,73 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearError() {
         _uiState.update { it.copy(uploadState = UploadState.Idle) }
+    }
+
+    // ── Upload 아래 단축버튼 ──────────────────────────────────────────
+
+    fun saveShortcut(
+        slot: Int,
+        title: String,
+        iconKey: String,
+        colorHex: Long,
+        listId: String?
+    ) {
+        settingsStore.saveShortcut(
+            ShortcutConfig(
+                slot = slot,
+                title = title.trim(),
+                iconKey = iconKey,
+                colorHex = colorHex,
+                listId = listId
+            )
+        )
+        _uiState.update { it.copy(shortcuts = settingsStore.loadShortcuts()) }
+    }
+
+    fun deleteShortcut(slot: Int) {
+        settingsStore.deleteShortcut(slot)
+        _uiState.update { it.copy(shortcuts = settingsStore.loadShortcuts()) }
+    }
+
+    /**
+     * 단축버튼을 눌렀을 때: 저장된 제목의 할일을
+     * 화면에서 고른 날짜에 "완료" 상태로 지정된 목록에 등록한다.
+     */
+    fun runShortcut(slot: Int) {
+        val state = _uiState.value
+        val shortcut = state.shortcuts[slot] ?: return
+        val targetListId = shortcut.listId ?: state.selectedTaskList?.id ?: return
+        val service = tasksService ?: return
+        if (state.uploadState is UploadState.Loading) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(uploadState = UploadState.Loading) }
+
+            val stamp = state.selectedDate
+                .atStartOfDay(ZoneId.of("UTC"))
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
+
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val task = Task().apply {
+                        title = shortcut.title
+                        due = stamp
+                        status = "completed"
+                        completed = stamp
+                    }
+                    service.tasks().insert(targetListId, task).execute()
+                }
+            }
+
+            if (result.isSuccess) {
+                _uiState.update { it.copy(uploadState = UploadState.Success) }
+                delay(1500)
+                _uiState.update { it.copy(uploadState = UploadState.Idle) }
+            } else {
+                val msg = result.exceptionOrNull()?.message ?: "등록 실패"
+                _uiState.update { it.copy(uploadState = UploadState.Error(msg)) }
+            }
+        }
     }
 
     // ── 오늘 할일 화면 (우→좌 스와이프) ────────────────────────────────

@@ -80,6 +80,9 @@ fun ToskerDialog(
     onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
     onMoveList: (id: String, up: Boolean) -> Unit,
     onOpenTodayTasks: () -> Unit,
+    onRunShortcut: (slot: Int) -> Unit,
+    onSaveShortcut: (slot: Int, title: String, iconKey: String, colorHex: Long, listId: String?) -> Unit,
+    onDeleteShortcut: (slot: Int) -> Unit,
     onToggleTodayTask: (taskId: String, listId: String) -> Unit,
     onMoveToTodayList: () -> Unit,
     onCloseTodayTasks: () -> Unit,
@@ -94,6 +97,8 @@ fun ToskerDialog(
     val focusManager = LocalFocusManager.current
     var showDatePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    // 편집 중인 단축버튼 슬롯 (null이면 편집 창 닫힘)
+    var editingShortcutSlot by remember { mutableStateOf<Int?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -382,29 +387,61 @@ fun ToskerDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    focusManager.clearFocus()
-                    onUpload()
-                },
-                enabled = uiState.taskText.isNotBlank()
-                        && uiState.selectedTaskList != null
-                        && uiState.uploadState !is UploadState.Loading,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (uiState.uploadState is UploadState.Loading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                } else {
-                    Text(stringResource(R.string.upload))
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = {
+                        focusManager.clearFocus()
+                        onUpload()
+                    },
+                    enabled = uiState.taskText.isNotBlank()
+                            && uiState.selectedTaskList != null
+                            && uiState.uploadState !is UploadState.Loading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (uiState.uploadState is UploadState.Loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text(stringResource(R.string.upload))
+                    }
                 }
+
+                Spacer(Modifier.size(10.dp))
+
+                // 단축버튼 2행 × 5열 - 누르면 선택된 날짜에 완료 상태로 등록
+                ShortcutGrid(
+                    shortcuts = uiState.shortcuts,
+                    enabled = uiState.uploadState !is UploadState.Loading,
+                    onRun = onRunShortcut,
+                    onEdit = { editingShortcutSlot = it }
+                )
             }
         },
         dismissButton = null
     )
+
+    // 단축버튼 등록/수정 창
+    editingShortcutSlot?.let { slot ->
+        ShortcutEditDialog(
+            slot = slot,
+            existing = uiState.shortcuts[slot],
+            taskLists = uiState.taskLists,
+            defaultListId = uiState.shortcuts[slot]?.listId
+                ?: uiState.selectedTaskList?.id,
+            onSave = { title, iconKey, colorHex, listId ->
+                onSaveShortcut(slot, title, iconKey, colorHex, listId)
+                editingShortcutSlot = null
+            },
+            onDelete = {
+                onDeleteShortcut(slot)
+                editingShortcutSlot = null
+            },
+            onDismiss = { editingShortcutSlot = null }
+        )
+    }
 
     // 오늘 할일 화면 (우→좌 스와이프)
     TodayTasksDialog(

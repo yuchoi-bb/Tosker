@@ -11,7 +11,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
  */
 object ShortcutIcons {
 
-    data class Entry(val key: String, val icon: ImageVector)
+    /** 알파벳 항목의 키 접두사. 예: "alpha:A" */
+    const val LETTER_PREFIX = "alpha:"
+
+    /** [icon]이 null이면 아이콘 대신 [key]가 가리키는 글자를 그린다(알파벳 항목). */
+    data class Entry(val key: String, val icon: ImageVector?)
 
     /** 분류별 아이콘. 선택 그리드에서 머리글과 함께 보여준다. */
     val groups: List<Pair<String, List<Entry>>> = listOf(
@@ -115,15 +119,22 @@ object ShortcutIcons {
             Entry("tv", Icons.Filled.Tv),
             Entry("game", Icons.Filled.SportsEsports),
             Entry("person", Icons.Filled.Person)
-        )
+        ),
+        "알파벳" to ('A'..'Z').map { Entry("$LETTER_PREFIX$it", null) }
     )
 
     private val byKey: Map<String, ImageVector> =
-        groups.flatMap { it.second }.associate { it.key to it.icon }
+        groups.flatMap { it.second }
+            .mapNotNull { entry -> entry.icon?.let { entry.key to it } }
+            .toMap()
 
     /** 저장된 키로 아이콘을 찾는다. 없으면 기본 체크 아이콘. */
     fun icon(key: String): ImageVector =
         byKey[key] ?: Icons.Filled.CheckCircle
+
+    /** 알파벳 항목이면 그릴 글자를, 아니면 null을 반환한다. */
+    fun letterOf(key: String): String? =
+        if (key.startsWith(LETTER_PREFIX)) key.removePrefix(LETTER_PREFIX).take(1) else null
 
     val defaultKey: String = "check"
 }

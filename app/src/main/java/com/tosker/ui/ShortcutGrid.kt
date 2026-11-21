@@ -22,7 +22,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.tosker.settings.CategoryDefaults
 import com.tosker.settings.ShortcutConfig
 import com.tosker.viewmodel.TaskListItem
@@ -95,11 +98,12 @@ fun ShortcutGrid(
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(color.copy(alpha = 0.18f))
                             ) {
-                                Icon(
-                                    ShortcutIcons.icon(config.iconKey),
-                                    contentDescription = config.title,
+                                ShortcutGlyph(
+                                    iconKey = config.iconKey,
                                     tint = color,
-                                    modifier = Modifier.size(22.dp)
+                                    iconSize = 22.dp,
+                                    letterSize = 20.sp,
+                                    contentDescription = config.title
                                 )
                                 // 해야 할 일 버튼은 우상단에 작은 원 표시로 구분
                                 if (!config.markCompleted) {
@@ -214,6 +218,36 @@ fun ShortcutEditDialog(
             }
         }
     )
+}
+
+/**
+ * 단축버튼에 들어갈 그림 하나.
+ * 알파벳 항목이면 글자를, 그 외에는 Material 아이콘을 그린다.
+ */
+@Composable
+fun ShortcutGlyph(
+    iconKey: String,
+    tint: Color,
+    iconSize: Dp,
+    letterSize: TextUnit,
+    contentDescription: String?
+) {
+    val letter = ShortcutIcons.letterOf(iconKey)
+    if (letter != null) {
+        Text(
+            text = letter,
+            color = tint,
+            fontSize = letterSize,
+            fontWeight = FontWeight.Bold
+        )
+    } else {
+        Icon(
+            ShortcutIcons.icon(iconKey),
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(iconSize)
+        )
+    }
 }
 
 @Composable
@@ -357,12 +391,13 @@ private fun IconPicker(
                                     )
                                     .clickable { onSelect(entry.key) }
                             ) {
-                                Icon(
-                                    entry.icon,
-                                    contentDescription = entry.key,
+                                ShortcutGlyph(
+                                    iconKey = entry.key,
                                     tint = if (isSelected) tint
                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(20.dp)
+                                    iconSize = 20.dp,
+                                    letterSize = 16.sp,
+                                    contentDescription = entry.key
                                 )
                             }
                         }

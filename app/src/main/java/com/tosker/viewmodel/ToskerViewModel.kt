@@ -124,7 +124,10 @@ sealed class TodayTasksState {
     data class Error(val message: String) : TodayTasksState()
 }
 
-/** 습관 격자의 세로축 한 줄 (Tasks의 마감일 없는 미완료 할일) */
+/** 그날의 한 줄 일기 (일기 목록의 할일 하나) */
+data class JournalEntry(val taskId: String, val date: LocalDate, val text: String)
+
+/** 습관 격자의 세로축 한 줄 (일기 목록을 뺀 습관 목록의 미완료 할일) */
 data class HabitDef(val taskId: String, val title: String)
 
 /** 습관 격자 화면 상태 */
@@ -135,7 +138,9 @@ sealed class HabitGridState {
         val month: YearMonth,
         val habits: List<HabitDef>,
         /** (습관 제목, 날짜) -> 그 기록 할일의 id */
-        val marks: Map<Pair<String, LocalDate>, String>
+        val marks: Map<Pair<String, LocalDate>, String>,
+        /** 날짜 -> 그날의 한 줄 일기 */
+        val journal: Map<LocalDate, JournalEntry> = emptyMap()
     ) : HabitGridState()
     data class Error(val message: String) : HabitGridState()
 }
@@ -158,7 +163,9 @@ data class UiState(
     val syncState: SyncState = SyncState.Idle,
     val habitGridState: HabitGridState = HabitGridState.Hidden,
     /** 습관 격자에 쓸 Tasks 목록 id */
-    val habitListId: String? = null
+    val habitListId: String? = null,
+    /** 한 줄 일기를 담을 Tasks 목록 id */
+    val journalListId: String? = null
 )
 
 /** 설정 동기화(Google Drive 앱 전용 폴더) 상태 */
@@ -179,7 +186,8 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
         UiState(
             listConfigs = settingsStore.loadConfigs(),
             shortcuts = settingsStore.loadShortcuts(),
-            habitListId = settingsStore.loadHabitListId()
+            habitListId = settingsStore.loadHabitListId(),
+            journalListId = settingsStore.loadJournalListId()
         )
     )
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -230,6 +238,7 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                         listConfigs = settingsStore.loadConfigs(),
                         shortcuts = settingsStore.loadShortcuts(),
                         habitListId = settingsStore.loadHabitListId(),
+                        journalListId = settingsStore.loadJournalListId(),
                         syncState = SyncState.Synced(System.currentTimeMillis())
                     )
                 } else {
@@ -367,7 +376,8 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                 authState = AuthState.LoggedOut,
                 listConfigs = it.listConfigs,
                 shortcuts = it.shortcuts,
-                habitListId = it.habitListId
+                habitListId = it.habitListId,
+                journalListId = it.journalListId
             )
         }
     }
@@ -386,7 +396,9 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
             }
             _uiState.update { ui ->
                 // 습관 목록은 버튼에서 숨기므로 기본 선택에서도 제외한다.
-                val selectable = lists.filter { it.id != ui.habitListId }
+                val selectable = lists.filter {
+                    it.id != ui.habitListId && it.id != ui.journalListId
+                }
                 ui.copy(
                     taskLists = lists,
                     selectedTaskList = selectable.firstOrNull() ?: lists.firstOrNull()
@@ -488,13 +500,16 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                         pageToken = response.nextPageToken
                     } while (!pageToken.isNullOrBlank() && all.size < 1000)
 
+                    // 습관 정의 = 이 목록의 완료되지 않은 할일 전부.
+                    // 마감일이 붙어 있어도 습관으로 읽는다(제목이 같으면 한 줄로 합침).
                     val habits = all
-                        .filter { it.due.isNullOrBlank() && it.status != "completed" }
+                        .filter { it.status != "completed" }
                         .mapNotNull { task ->
                             val id = task.id ?: return@mapNotNull null
                             val title = task.title?.trim().orEmpty()
                             if (title.isBlank()) null else HabitDef(id, title)
                         }
+                        .distinctBy { it.title }
 
                     val marks = buildMap {
                         all.forEach { task ->
@@ -508,7 +523,36 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                         }
                     }
 
-                    HabitGridState.Loaded(month, habits, marks)
+                    // 일기 목록이 지정돼 있으면 그달 한 줄 일기도 함께 읽는다.
+                    val journalListId = _uiState.value.journalListId
+                    val journal = if (journalListId.isNullOrBlank()) {
+                        emptyMap()
+                    } else {
+                        val entries = mutableListOf<Task>()
+                        var jToken: String? = null
+                        do {
+                            val response = service.tasks().list(journalListId)
+                                .setShowCompleted(true)
+                                .setShowHidden(true)
+                                .setPageToken(jToken)
+                                .execute()
+                            entries += response.items.orEmpty()
+                            jToken = response.nextPageToken
+                        } while (!jToken.isNullOrBlank() && entries.size < 500)
+
+                        buildMap {
+                            entries.forEach { task ->
+                                val id = task.id ?: return@forEach
+                                val text = task.title?.trim().orEmpty()
+                                if (text.isBlank()) return@forEach
+                                val date = parseDueDate(task.due) ?: return@forEach
+                                if (YearMonth.from(date) != month) return@forEach
+                                put(date, JournalEntry(id, date, text))
+                            }
+                        }
+                    }
+
+                    HabitGridState.Loaded(month, habits, marks, journal)
                 }
             }
 
@@ -620,6 +664,89 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
         }
+    }
+
+    /**
+     * 그날의 한 줄 일기를 저장한다.
+     * 이미 그 날짜 글이 있으면 내용을 바꾸고, 없으면 새로 만든다.
+     * 빈 글로 저장하면 그날 기록을 지운다.
+     */
+    fun saveJournal(date: LocalDate, text: String) {
+        val state = _uiState.value
+        val listId = state.journalListId ?: return
+        val service = tasksService ?: return
+        val loaded = state.habitGridState as? HabitGridState.Loaded ?: return
+        val existing = loaded.journal[date]
+        val clean = text.trim()
+
+        viewModelScope.launch {
+            val stamp = date
+                .atStartOfDay(ZoneId.of("UTC"))
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
+
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    when {
+                        clean.isBlank() && existing != null -> {
+                            service.tasks().delete(listId, existing.taskId).execute()
+                            null
+                        }
+                        clean.isBlank() -> null
+                        existing != null -> {
+                            service.tasks()
+                                .patch(listId, existing.taskId, Task().apply { title = clean })
+                                .execute()
+                            existing.taskId
+                        }
+                        else -> {
+                            service.tasks().insert(
+                                listId,
+                                Task().apply {
+                                    title = clean
+                                    due = stamp
+                                }
+                            ).execute().id
+                        }
+                    }
+                }
+            }
+
+            if (result.isSuccess) {
+                _uiState.update { ui ->
+                    val current = ui.habitGridState as? HabitGridState.Loaded ?: return@update ui
+                    val next = current.journal.toMutableMap()
+                    val newId = result.getOrNull()
+                    if (clean.isBlank() || newId == null) {
+                        next.remove(date)
+                    } else {
+                        next[date] = JournalEntry(newId, date, clean)
+                    }
+                    ui.copy(habitGridState = current.copy(journal = next))
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        uploadState = UploadState.Error(
+                            result.exceptionOrNull()?.message ?: "일기 저장 실패"
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    /** 설정에서 한 줄 일기 목록을 지정한다. */
+    fun setJournalList(listId: String?) {
+        settingsStore.saveJournalListId(listId)
+        _uiState.update { ui ->
+            val nextSelected = if (ui.selectedTaskList?.id == listId) {
+                ui.taskLists.firstOrNull { it.id != listId }
+            } else {
+                ui.selectedTaskList
+            }
+            ui.copy(journalListId = listId, selectedTaskList = nextSelected)
+        }
+        pushSettings()
     }
 
     /** 설정에서 습관 목록을 지정한다. */
@@ -744,7 +871,11 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
             // 버튼과 같은 순서(개인 → W → 운동 → 반복)로 훑어야 목록별로 묶여서 나온다.
             val sourceLists = orderedTaskLists(state.taskLists, state.listConfigs)
                 .map { it.item }
-                .filter { it.id != todayList?.id && it.id != state.habitListId }
+                .filter {
+                    it.id != todayList?.id &&
+                            it.id != state.habitListId &&
+                            it.id != state.journalListId
+                }
 
             val result = withContext(Dispatchers.IO) {
                 runCatching {

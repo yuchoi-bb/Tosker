@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,9 +40,11 @@ private val CELL_SIZE = 26.dp
 @Composable
 fun HabitGridDialog(
     state: HabitGridState,
+    journalEnabled: Boolean,
     onToggle: (habitTitle: String, date: LocalDate) -> Unit,
     onChangeMonth: (delta: Long) -> Unit,
     onAddHabit: (String) -> Unit,
+    onSaveJournal: (date: LocalDate, text: String) -> Unit,
     onDismiss: () -> Unit
 ) {
     if (state is HabitGridState.Hidden) return
@@ -120,6 +123,13 @@ fun HabitGridDialog(
                             Spacer(Modifier.size(4.dp))
                             Text("습관 추가")
                         }
+
+                        Divider()
+                        JournalSection(
+                            state = state,
+                            enabled = journalEnabled,
+                            onSave = onSaveJournal
+                        )
                     }
 
                     else -> {}
@@ -136,6 +146,127 @@ fun HabitGridDialog(
             },
             onDismiss = { showAddHabit = false }
         )
+    }
+}
+
+/** 격자 아래 한 줄 일기. 날짜 하나를 골라 그날 기록을 쓰고, 그달 기록을 아래 보여준다. */
+@Composable
+private fun JournalSection(
+    state: HabitGridState.Loaded,
+    enabled: Boolean,
+    onSave: (LocalDate, String) -> Unit
+) {
+    Text(
+        "한 줄 일기",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold
+    )
+
+    if (!enabled) {
+        Text(
+            "설정에서 일기 목록을 지정하면 그날의 한 줄을 남길 수 있습니다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline
+        )
+        return
+    }
+
+    val today = LocalDate.now()
+    // 이번 달을 보고 있으면 오늘, 아니면 그달 1일을 기본으로 고른다.
+    var pickedDate by remember(state.month) {
+        mutableStateOf(
+            if (YearMonth.from(today) == state.month) today else state.month.atDay(1)
+        )
+    }
+    var text by remember(pickedDate, state.journal) {
+        mutableStateOf(state.journal[pickedDate]?.text.orEmpty())
+    }
+
+    // 날짜 고르기
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        (1..state.month.lengthOfMonth()).forEach { day ->
+            val date = state.month.atDay(day)
+            val selected = date == pickedDate
+            val written = state.journal.containsKey(date)
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(CELL_SIZE)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(
+                        when {
+                            selected -> MaterialTheme.colorScheme.primary
+                            written -> MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                            else -> Color.Transparent
+                        }
+                    )
+                    .clickable { pickedDate = date }
+            ) {
+                Text(
+                    text = day.toString(),
+                    fontSize = 10.sp,
+                    fontWeight = if (selected || written) FontWeight.Bold else FontWeight.Normal,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+    }
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = { text = it },
+        label = {
+            Text("${pickedDate.monthValue}월 ${pickedDate.dayOfMonth}일 — 기억할 한 줄")
+        },
+        modifier = Modifier.fillMaxWidth(),
+        maxLines = 3
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End
+    ) {
+        TextButton(onClick = { onSave(pickedDate, text) }) { Text("저장") }
+    }
+
+    // 그달에 쓴 기록 목록
+    val written = state.journal.values.sortedBy { it.date }
+    if (written.isNotEmpty()) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())
+        ) {
+            written.forEach { entry ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { pickedDate = entry.date }
+                        .padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "${entry.date.dayOfMonth}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.width(22.dp),
+                        textAlign = TextAlign.End
+                    )
+                    Text(
+                        text = entry.text,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -230,7 +361,7 @@ private fun HabitGrid(
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(
                                         if (isToday) MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
-                                        else androidx.compose.ui.graphics.Color.Transparent
+                                        else Color.Transparent
                                     )
                                     .border(
                                         0.5.dp,

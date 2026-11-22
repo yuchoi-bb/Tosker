@@ -206,6 +206,17 @@ class SettingsStore(context: Context) {
         touch()
     }
 
+    /** 한 줄 일기를 담을 Google Tasks 목록 id. 지정 전에는 null. */
+    fun loadJournalListId(): String? =
+        prefs.getString(KEY_JOURNAL_LIST, null)?.takeIf { it.isNotBlank() }
+
+    fun saveJournalListId(listId: String?) {
+        prefs.edit().apply {
+            if (listId.isNullOrBlank()) remove(KEY_JOURNAL_LIST) else putString(KEY_JOURNAL_LIST, listId)
+        }.apply()
+        touch()
+    }
+
     /** 저녁 알림 사용 여부 (기본 켜짐) */
     fun loadReminderEnabled(): Boolean = prefs.getBoolean(KEY_REMINDER, true)
 
@@ -252,6 +263,7 @@ class SettingsStore(context: Context) {
             .put("listConfigs", listConfigs)
             .put("shortcuts", shortcuts)
             .put("habitListId", loadHabitListId() ?: "")
+            .put("journalListId", loadJournalListId() ?: "")
             .put("reminderEnabled", loadReminderEnabled())
             .toString()
     }
@@ -278,6 +290,11 @@ class SettingsStore(context: Context) {
                 if (id.isBlank()) remove(KEY_HABIT_LIST) else putString(KEY_HABIT_LIST, id)
             }.apply()
         }
+        obj.optString("journalListId").let { id ->
+            prefs.edit().apply {
+                if (id.isBlank()) remove(KEY_JOURNAL_LIST) else putString(KEY_JOURNAL_LIST, id)
+            }.apply()
+        }
         if (obj.has("reminderEnabled")) {
             prefs.edit().putBoolean(KEY_REMINDER, obj.optBoolean("reminderEnabled", true)).apply()
         }
@@ -290,6 +307,7 @@ class SettingsStore(context: Context) {
         const val KEY_SHORTCUTS = "shortcuts"
         const val KEY_UPDATED_AT = "settings_updated_at"
         const val KEY_HABIT_LIST = "habit_list_id"
+        const val KEY_JOURNAL_LIST = "journal_list_id"
         const val KEY_REMINDER = "reminder_enabled"
     }
 }

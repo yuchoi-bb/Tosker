@@ -87,6 +87,8 @@ fun ToskerDialog(
     onAddHabit: (String) -> Unit,
     onCloseHabitGrid: () -> Unit,
     onHabitListChange: (String?) -> Unit,
+    onJournalListChange: (String?) -> Unit,
+    onSaveJournal: (date: java.time.LocalDate, text: String) -> Unit,
     onSyncNow: () -> Unit,
     onRunShortcut: (slot: Int) -> Unit,
     onSaveShortcut: (slot: Int, title: String, iconKey: String, colorHex: Long, listId: String?, markCompleted: Boolean) -> Unit,
@@ -255,7 +257,9 @@ fun ToskerDialog(
                 // 카테고리 동그라미 버튼 - 실제 Tasks 목록 + 사용자 설정(이름/색상/순서)
                 // 습관 목록은 평소 할일을 넣는 곳이 아니라 버튼 줄에서 숨긴다.
                 val orderedLists = orderedTaskLists(uiState.taskLists, uiState.listConfigs)
-                    .filter { it.item.id != uiState.habitListId }
+                    .filter {
+                        it.item.id != uiState.habitListId && it.item.id != uiState.journalListId
+                    }
                 // 목록이 많아지면 한 줄에 들어가도록 원 크기를 줄인다.
                 val circleSize = when {
                     orderedLists.size >= 6 -> 40.dp
@@ -479,6 +483,8 @@ fun ToskerDialog(
     // 습관 격자 화면 (좌→우 스와이프)
     HabitGridDialog(
         state = uiState.habitGridState,
+        journalEnabled = !uiState.journalListId.isNullOrBlank(),
+        onSaveJournal = onSaveJournal,
         onToggle = onToggleHabitMark,
         onChangeMonth = onChangeHabitMonth,
         onAddHabit = onAddHabit,
@@ -504,6 +510,7 @@ fun ToskerDialog(
             onApiKeySave = onApiKeySave,
             onSyncNow = onSyncNow,
             onHabitListChange = onHabitListChange,
+            onJournalListChange = onJournalListChange,
             onSignOut = {
                 showSettings = false
                 onSignOut()

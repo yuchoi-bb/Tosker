@@ -46,6 +46,7 @@ fun SettingsDialog(
     onApiKeySave: (String) -> Unit,
     onSyncNow: () -> Unit,
     onHabitListChange: (String?) -> Unit,
+    onJournalListChange: (String?) -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -162,6 +163,49 @@ fun SettingsDialog(
                                         onClick = {
                                             onHabitListChange(
                                                 if (uiState.habitListId == list.id) null else list.id
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                list.title,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+
+                Divider()
+
+                // 한 줄 일기를 담을 목록
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "일기 목록",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Text(
+                        "습관 격자 아래에서 그날의 한 줄을 남길 수 있습니다. " +
+                                "기록은 이 목록에 날짜별 할일로 저장됩니다.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        uiState.taskLists.chunked(2).forEach { pair ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                pair.forEach { list ->
+                                    FilterChip(
+                                        selected = uiState.journalListId == list.id,
+                                        onClick = {
+                                            onJournalListChange(
+                                                if (uiState.journalListId == list.id) null else list.id
                                             )
                                         },
                                         label = {

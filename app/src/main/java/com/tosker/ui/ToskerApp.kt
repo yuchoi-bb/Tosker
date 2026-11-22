@@ -51,6 +51,8 @@ fun ToskerApp(
             onAddHabit = viewModel::addHabit,
             onCloseHabitGrid = viewModel::closeHabitGrid,
             onHabitListChange = viewModel::setHabitList,
+            onJournalListChange = viewModel::setJournalList,
+            onSaveJournal = viewModel::saveJournal,
             onSyncNow = viewModel::syncSettings,
             onRunShortcut = viewModel::runShortcut,
             onSaveShortcut = viewModel::saveShortcut,

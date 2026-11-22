@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -117,8 +118,22 @@ fun ToskerDialog(
             ) {
                 Text("Tosker", style = MaterialTheme.typography.titleLarge)
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 습관 격자 버튼 - 좌→우 스와이프와 같은 기능
+                    IconButton(
+                        onClick = onOpenHabitGrid,
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.GridOn,
+                            contentDescription = "습관 기록",
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                    }
                     // 문서 스캔 버튼 - 사진/텍스트 속 날짜·일정을 캘린더·태스크로 가져오기
-                    IconButton(onClick = onStartDocumentScan) {
+                    IconButton(
+                        onClick = onStartDocumentScan,
+                        modifier = Modifier.size(38.dp)
+                    ) {
                         Icon(
                             Icons.Default.DocumentScanner,
                             contentDescription = "문서로 일정 추가",
@@ -126,7 +141,10 @@ fun ToskerDialog(
                         )
                     }
                     // 설정 버튼 - 클릭 시 새 설정 창 열림
-                    IconButton(onClick = { showSettings = true }) {
+                    IconButton(
+                        onClick = { showSettings = true },
+                        modifier = Modifier.size(38.dp)
+                    ) {
                         Icon(
                             Icons.Default.Settings,
                             contentDescription = "설정",
@@ -134,7 +152,10 @@ fun ToskerDialog(
                         )
                     }
                     // 닫기 버튼 (최우측)
-                    IconButton(onClick = onDismiss) {
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(38.dp)
+                    ) {
                         Icon(
                             Icons.Default.Close,
                             contentDescription = "닫기",

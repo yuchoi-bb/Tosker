@@ -253,7 +253,9 @@ fun ToskerDialog(
                 }
 
                 // 카테고리 동그라미 버튼 - 실제 Tasks 목록 + 사용자 설정(이름/색상/순서)
+                // 습관 목록은 평소 할일을 넣는 곳이 아니라 버튼 줄에서 숨긴다.
                 val orderedLists = orderedTaskLists(uiState.taskLists, uiState.listConfigs)
+                    .filter { it.item.id != uiState.habitListId }
                 // 목록이 많아지면 한 줄에 들어가도록 원 크기를 줄인다.
                 val circleSize = when {
                     orderedLists.size >= 6 -> 40.dp

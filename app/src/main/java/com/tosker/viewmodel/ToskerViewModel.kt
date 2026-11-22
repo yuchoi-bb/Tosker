@@ -384,10 +384,12 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                         } ?: emptyList()
                 }.getOrElse { emptyList() }
             }
-            _uiState.update {
-                it.copy(
+            _uiState.update { ui ->
+                // 습관 목록은 버튼에서 숨기므로 기본 선택에서도 제외한다.
+                val selectable = lists.filter { it.id != ui.habitListId }
+                ui.copy(
                     taskLists = lists,
-                    selectedTaskList = lists.firstOrNull()
+                    selectedTaskList = selectable.firstOrNull() ?: lists.firstOrNull()
                 )
             }
         }
@@ -623,7 +625,15 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
     /** 설정에서 습관 목록을 지정한다. */
     fun setHabitList(listId: String?) {
         settingsStore.saveHabitListId(listId)
-        _uiState.update { it.copy(habitListId = listId) }
+        _uiState.update { ui ->
+            // 방금 숨긴 목록이 선택돼 있었다면 보이는 목록으로 옮겨둔다.
+            val nextSelected = if (ui.selectedTaskList?.id == listId) {
+                ui.taskLists.firstOrNull { it.id != listId }
+            } else {
+                ui.selectedTaskList
+            }
+            ui.copy(habitListId = listId, selectedTaskList = nextSelected)
+        }
         pushSettings()
     }
 
@@ -734,7 +744,7 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
             // 버튼과 같은 순서(개인 → W → 운동 → 반복)로 훑어야 목록별로 묶여서 나온다.
             val sourceLists = orderedTaskLists(state.taskLists, state.listConfigs)
                 .map { it.item }
-                .filter { it.id != todayList?.id }
+                .filter { it.id != todayList?.id && it.id != state.habitListId }
 
             val result = withContext(Dispatchers.IO) {
                 runCatching {

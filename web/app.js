@@ -105,8 +105,9 @@ async function onSignedIn() {
   try {
     app.taskLists = await api.listTaskLists();
     await store.sync();
-    const ordered = store.orderedLists(app.taskLists);
-    app.selectedListId = ordered[0]?.item.id || null;
+    const ordered = store.orderedLists(app.taskLists)
+      .filter(({ item }) => item.id !== store.habitListId());
+    app.selectedListId = ordered[0]?.item.id || app.taskLists[0]?.id || null;
     renderAll();
   } catch (e) {
     setStatus(e.message, true);
@@ -148,7 +149,11 @@ function renderCategories() {
   const row = $('category-row');
   row.replaceChildren();
 
-  store.orderedLists(app.taskLists).forEach(({ item, apiIndex }) => {
+  // 습관 목록은 평소 할일을 넣는 곳이 아니라 버튼 줄에서 숨긴다.
+  const visible = store.orderedLists(app.taskLists)
+    .filter(({ item }) => item.id !== store.habitListId());
+
+  visible.forEach(({ item, apiIndex }) => {
     const cfg = store.listConfig(item.id);
     const label = cfg?.label ?? store.defaultLabel(apiIndex, item.title);
     const color = store.toCss(cfg?.color ?? store.defaultColor(apiIndex));
@@ -480,7 +485,9 @@ async function openTodayTasks() {
   const ordered = store.orderedLists(app.taskLists);
   const todayList =
     ordered.find((e) => store.isTodayList(e.item.title))?.item || ordered[0]?.item;
-  const sources = ordered.map((e) => e.item).filter((l) => l.id !== todayList?.id);
+  const sources = ordered
+    .map((e) => e.item)
+    .filter((l) => l.id !== todayList?.id && l.id !== store.habitListId());
 
   openModal((body, close) => {
     body.append(modalHead('오늘 할일', close));
@@ -837,6 +844,7 @@ function openSettings() {
         chip.onclick = () => {
           store.setHabitListId(store.habitListId() === l.id ? '' : l.id);
           renderHabitChips();
+          renderCategories();
         };
         habitChips.append(chip);
       });

@@ -32,6 +32,9 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
+        with:
+          # 레포에 Pages가 아직 꺼져 있으면 자동으로 켠다.
+          enablement: true
 
       - name: Upload web/
         uses: actions/upload-pages-artifact@v3

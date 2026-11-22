@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tosker</title>
+  <meta name="description" content="Google Tasks 빠른 입력과 습관 기록" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#f4788a" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- 최초 1회: OAuth 클라이언트 ID 입력 -->
+  <section id="setup" class="screen hidden">
+    <div class="card narrow">
+      <h1>Tosker 웹</h1>
+      <p class="muted">
+        처음 한 번만, Google Cloud에서 발급한 <b>웹 애플리케이션 OAuth 클라이언트 ID</b>를 넣어주세요.
+        브라우저에만 저장되며 서버로 보내지 않습니다.
+      </p>
+      <ol class="muted steps">
+        <li>Google Cloud Console → 사용자 인증 정보 → <b>OAuth 클라이언트 ID 만들기</b></li>
+        <li>유형: <b>웹 애플리케이션</b></li>
+        <li>승인된 JavaScript 원본에 <code id="origin-hint"></code> 추가</li>
+      </ol>
+      <input id="client-id-input" type="text" placeholder="...apps.googleusercontent.com" />
+      <button id="client-id-save" class="primary">저장하고 시작</button>
+    </div>
+  </section>
+
+  <!-- 로그인 -->
+  <section id="login" class="screen hidden">
+    <div class="card narrow center">
+      <h1>Tosker</h1>
+      <p class="muted">Google 계정으로 로그인해 Google Tasks와 연동하세요.</p>
+      <button id="signin" class="primary">Google로 로그인</button>
+      <p id="login-error" class="error"></p>
+      <button id="reset-client-id" class="link">클라이언트 ID 다시 입력</button>
+    </div>
+  </section>
+
+  <!-- 메인 -->
+  <section id="main" class="screen hidden">
+    <header class="topbar">
+      <h1>Tosker</h1>
+      <div class="topbar-actions">
+        <button id="open-habits" class="icon-btn" title="습관 기록">
+          <span class="material-symbols-rounded">grid_on</span>
+        </button>
+        <button id="open-today" class="icon-btn" title="오늘 할일">
+          <span class="material-symbols-rounded">checklist</span>
+        </button>
+        <button id="open-settings" class="icon-btn" title="설정">
+          <span class="material-symbols-rounded">settings</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="card">
+      <div id="category-row" class="category-row"></div>
+
+      <div class="input-row">
+        <input id="task-text" type="text" placeholder="할 일을 입력하세요" autocomplete="off" />
+        <button id="voice" class="icon-btn" title="음성 입력">
+          <span class="material-symbols-rounded">mic</span>
+        </button>
+      </div>
+
+      <div id="day-row" class="day-row"></div>
+
+      <div class="date-row">
+        <span id="selected-date"></span>
+        <input id="date-picker" type="date" />
+      </div>
+
+      <p id="status" class="status"></p>
+
+      <button id="upload" class="primary wide" disabled>Upload</button>
+
+      <div id="shortcut-grid" class="shortcut-grid"></div>
+    </div>
+  </section>
+
+  <!-- 공용 모달 -->
+  <div id="modal-backdrop" class="backdrop hidden">
+    <div id="modal" class="modal"></div>
+  </div>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

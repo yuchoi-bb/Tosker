@@ -85,6 +85,7 @@ fun ToskerDialog(
     onToggleHabitMark: (habitTitle: String, date: java.time.LocalDate) -> Unit,
     onChangeHabitMonth: (delta: Long) -> Unit,
     onAddHabit: (String) -> Unit,
+    onDeleteHabit: (title: String, alsoRecords: Boolean) -> Unit,
     onCloseHabitGrid: () -> Unit,
     onHabitListChange: (String?) -> Unit,
     onJournalListChange: (String?) -> Unit,
@@ -488,6 +489,7 @@ fun ToskerDialog(
         onToggle = onToggleHabitMark,
         onChangeMonth = onChangeHabitMonth,
         onAddHabit = onAddHabit,
+        onDeleteHabit = onDeleteHabit,
         onDismiss = onCloseHabitGrid
     )
 

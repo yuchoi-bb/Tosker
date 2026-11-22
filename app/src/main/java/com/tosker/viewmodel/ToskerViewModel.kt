@@ -500,16 +500,20 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                         pageToken = response.nextPageToken
                     } while (!pageToken.isNullOrBlank() && all.size < 1000)
 
-                    // 습관 정의 = 이 목록의 완료되지 않은 할일 전부.
-                    // 마감일이 붙어 있어도 습관으로 읽는다(제목이 같으면 한 줄로 합침).
+                    // 습관 = 이 목록에 있는 모든 할일의 제목(중복 제거).
+                    // 완료/미완료, 날짜 유무를 가리지 않는다. 단축버튼으로 기록한
+                    // 완료 항목도 그 제목이 곧 습관이 된다.
                     val habits = all
-                        .filter { it.status != "completed" }
                         .mapNotNull { task ->
-                            val id = task.id ?: return@mapNotNull null
                             val title = task.title?.trim().orEmpty()
-                            if (title.isBlank()) null else HabitDef(id, title)
+                            if (title.isBlank()) null else title to task
                         }
-                        .distinctBy { it.title }
+                        .groupBy({ it.first }, { it.second })
+                        .map { (title, tasks) ->
+                            // 지울 때 쓸 "정의" 할일(미완료)이 있으면 그 id를 들고 있는다.
+                            val definition = tasks.firstOrNull { it.status != "completed" }
+                            HabitDef(definition?.id ?: tasks.first().id.orEmpty(), title)
+                        }
 
                     val marks = buildMap {
                         all.forEach { task ->
@@ -728,6 +732,55 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                     it.copy(
                         uploadState = UploadState.Error(
                             result.exceptionOrNull()?.message ?: "일기 저장 실패"
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * 습관 한 줄을 지운다.
+     * 습관 목록에서 그 제목의 미완료 할일(정의)을 지우고, 지난 기록은 남긴다.
+     * [alsoRecords]가 true면 그 제목의 완료 기록까지 전부 지운다.
+     */
+    fun deleteHabit(title: String, alsoRecords: Boolean = false) {
+        val state = _uiState.value
+        val listId = state.habitListId ?: return
+        val service = tasksService ?: return
+        val month = (state.habitGridState as? HabitGridState.Loaded)?.month ?: YearMonth.now()
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val all = mutableListOf<Task>()
+                    var pageToken: String? = null
+                    do {
+                        val response = service.tasks().list(listId)
+                            .setShowCompleted(true)
+                            .setShowHidden(true)
+                            .setPageToken(pageToken)
+                            .execute()
+                        all += response.items.orEmpty()
+                        pageToken = response.nextPageToken
+                    } while (!pageToken.isNullOrBlank() && all.size < 1000)
+
+                    all.filter { task ->
+                        task.title?.trim() == title &&
+                                (alsoRecords || task.status != "completed")
+                    }.forEach { task ->
+                        task.id?.let { service.tasks().delete(listId, it).execute() }
+                    }
+                }
+            }
+
+            if (result.isSuccess) {
+                openHabitGrid(month)
+            } else {
+                _uiState.update {
+                    it.copy(
+                        uploadState = UploadState.Error(
+                            result.exceptionOrNull()?.message ?: "습관 삭제 실패"
                         )
                     )
                 }

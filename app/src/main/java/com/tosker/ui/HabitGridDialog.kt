@@ -2,7 +2,9 @@ package com.tosker.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -37,6 +39,7 @@ private val CELL_SIZE = 26.dp
  * 세로축은 습관 목록의 "마감일 없는 미완료 할일",
  * 가로축은 그달의 1~말일. 칸을 누르면 그 날짜 기록이 켜지고 꺼진다.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HabitGridDialog(
     state: HabitGridState,
@@ -44,12 +47,15 @@ fun HabitGridDialog(
     onToggle: (habitTitle: String, date: LocalDate) -> Unit,
     onChangeMonth: (delta: Long) -> Unit,
     onAddHabit: (String) -> Unit,
+    onDeleteHabit: (title: String, alsoRecords: Boolean) -> Unit,
     onSaveJournal: (date: LocalDate, text: String) -> Unit,
     onDismiss: () -> Unit
 ) {
     if (state is HabitGridState.Hidden) return
 
     var showAddHabit by remember { mutableStateOf(false) }
+    // 삭제 확인 중인 습관 이름
+    var deletingHabit by remember { mutableStateOf<String?>(null) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -111,7 +117,11 @@ fun HabitGridDialog(
                                 color = MaterialTheme.colorScheme.outline
                             )
                         } else {
-                            HabitGrid(state = state, onToggle = onToggle)
+                            HabitGrid(
+                                state = state,
+                                onToggle = onToggle,
+                                onDeleteHabit = { deletingHabit = it }
+                            )
                         }
 
                         TextButton(onClick = { showAddHabit = true }) {
@@ -136,6 +146,33 @@ fun HabitGridDialog(
                 }
             }
         }
+    }
+
+    deletingHabit?.let { title ->
+        AlertDialog(
+            onDismissRequest = { deletingHabit = null },
+            title = { Text("습관 삭제") },
+            text = {
+                Text("「$title」을(를) 격자에서 지울까요?\n지난 X 기록은 남겨둘 수 있습니다.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteHabit(title, false)
+                    deletingHabit = null
+                }) { Text("습관만 삭제") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        onDeleteHabit(title, true)
+                        deletingHabit = null
+                    }) {
+                        Text("기록까지 삭제", color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(onClick = { deletingHabit = null }) { Text("취소") }
+                }
+            }
+        )
     }
 
     if (showAddHabit) {
@@ -291,10 +328,12 @@ private fun MonthHeader(month: YearMonth, onChangeMonth: (Long) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HabitGrid(
     state: HabitGridState.Loaded,
-    onToggle: (habitTitle: String, date: LocalDate) -> Unit
+    onToggle: (habitTitle: String, date: LocalDate) -> Unit,
+    onDeleteHabit: (String) -> Unit
 ) {
     val days = (1..state.month.lengthOfMonth()).map { state.month.atDay(it) }
     val today = LocalDate.now()
@@ -309,7 +348,12 @@ private fun HabitGrid(
                 state.habits.forEach { habit ->
                     val done = days.count { state.marks.containsKey(habit.title to it) }
                     Column(
-                        modifier = Modifier.height(CELL_SIZE),
+                        modifier = Modifier
+                            .height(CELL_SIZE)
+                            .combinedClickable(
+                                onClick = {},
+                                onLongClick = { onDeleteHabit(habit.title) }
+                            ),
                         verticalArrangement = Arrangement.Center
                     ) {
                         Text(

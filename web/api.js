@@ -104,6 +104,17 @@ export async function insertTask(listId, task) {
   });
 }
 
+export async function patchTask(listId, taskId, patch) {
+  return request(
+    `${TASKS_BASE}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }
+  );
+}
+
 export async function deleteTask(listId, taskId) {
   return request(
     `${TASKS_BASE}/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`,

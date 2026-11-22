@@ -4,8 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -57,7 +57,11 @@ fun SettingsDialog(
         onDismissRequest = onDismiss,
         title = { Text("설정", style = MaterialTheme.typography.titleLarge) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            // 항목이 많아 창을 넘치므로 세로로 스크롤되게 한다.
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         "문서 스캔용 Gemini API 키",
@@ -245,11 +249,9 @@ fun SettingsDialog(
                             color = MaterialTheme.colorScheme.outline
                         )
                         val ordered = orderedTaskLists(uiState.taskLists, uiState.listConfigs)
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(14.dp),
-                            modifier = Modifier.heightIn(max = 280.dp)
-                        ) {
-                            itemsIndexed(ordered, key = { _, entry -> entry.item.id }) { pos, entry ->
+                        // 바깥 창이 이미 세로 스크롤이라 LazyColumn 대신 Column을 쓴다.
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            ordered.forEachIndexed { pos, entry ->
                                 ListConfigRow(
                                     list = entry.item,
                                     position = pos,

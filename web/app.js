@@ -106,7 +106,7 @@ async function onSignedIn() {
     app.taskLists = await api.listTaskLists();
     await store.sync();
     const ordered = store.orderedLists(app.taskLists)
-      .filter(({ item }) => item.id !== store.habitListId());
+      .filter(({ item }) => item.id !== store.habitListId() && item.id !== store.journalListId());
     app.selectedListId = ordered[0]?.item.id || app.taskLists[0]?.id || null;
     renderAll();
   } catch (e) {
@@ -151,7 +151,7 @@ function renderCategories() {
 
   // 습관 목록은 평소 할일을 넣는 곳이 아니라 버튼 줄에서 숨긴다.
   const visible = store.orderedLists(app.taskLists)
-    .filter(({ item }) => item.id !== store.habitListId());
+    .filter(({ item }) => item.id !== store.habitListId() && item.id !== store.journalListId());
 
   visible.forEach(({ item, apiIndex }) => {
     const cfg = store.listConfig(item.id);
@@ -487,7 +487,7 @@ async function openTodayTasks() {
     ordered.find((e) => store.isTodayList(e.item.title))?.item || ordered[0]?.item;
   const sources = ordered
     .map((e) => e.item)
-    .filter((l) => l.id !== todayList?.id && l.id !== store.habitListId());
+    .filter((l) => l.id !== todayList?.id && l.id !== store.habitListId() && l.id !== store.journalListId());
 
   openModal((body, close) => {
     body.append(modalHead('오늘 할일', close));
@@ -639,9 +639,15 @@ async function openHabitGrid(monthDate) {
       content.textContent = '불러오는 중...';
       try {
         const tasks = await api.listTasks(listId, { showCompleted: true, showHidden: true });
-        const habits = tasks
-          .filter((t) => !t.due && t.status !== 'completed' && t.title?.trim())
-          .map((t) => ({ id: t.id, title: t.title.trim() }));
+        // 습관 = 이 목록에 있는 모든 할일의 제목(중복 제거).
+        // 단축버튼으로 기록한 완료 항목의 제목도 습관이 된다.
+        const seen = new Map();
+        tasks.forEach((t) => {
+          const title = t.title?.trim();
+          if (!title) return;
+          if (!seen.has(title)) seen.set(title, { id: t.id, title });
+        });
+        const habits = [...seen.values()];
 
         const year = current.getFullYear();
         const month = current.getMonth();
@@ -675,6 +681,10 @@ async function openHabitGrid(monthDate) {
           content.append(habitGrid(habits, marks, year, month, lastDay, listId, draw));
         }
 
+        // 한 줄 일기
+        content.append(document.createElement('hr'));
+        content.append(await journalSection(year, month, lastDay));
+
         const add = document.createElement('button');
         add.className = 'secondary';
         add.textContent = '+ 습관 추가';
@@ -696,6 +706,138 @@ async function openHabitGrid(monthDate) {
     };
     draw();
   });
+}
+
+/** 격자 아래 한 줄 일기: 날짜를 고르고 그날 한 줄을 쓴다. */
+async function journalSection(year, month, lastDay) {
+  const wrap = document.createElement('div');
+  const listId = store.journalListId();
+
+  const head = document.createElement('b');
+  head.textContent = '한 줄 일기';
+  wrap.append(head);
+
+  if (!listId) {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = '설정에서 일기 목록을 지정하면 그날의 한 줄을 남길 수 있습니다.';
+    wrap.append(p);
+    return wrap;
+  }
+
+  const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+  // 날짜 -> { id, text }
+  const entries = new Map();
+  try {
+    const tasks = await api.listTasks(listId, { showCompleted: true, showHidden: true });
+    tasks.forEach((t) => {
+      const key = api.dueDateKey(t.due);
+      const text = t.title?.trim();
+      if (!key || !text || !key.startsWith(prefix)) return;
+      entries.set(key, { id: t.id, text });
+    });
+  } catch (e) {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = e.message;
+    wrap.append(p);
+    return wrap;
+  }
+
+  const todayKey = api.dateKey(new Date());
+  let picked = todayKey.startsWith(prefix) ? todayKey : `${prefix}-01`;
+
+  const dayRow = document.createElement('div');
+  dayRow.className = 'habit-days';
+  const input = document.createElement('input');
+  input.type = 'text';
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'primary';
+  saveBtn.textContent = '저장';
+  const written = document.createElement('div');
+
+  const refresh = () => {
+    // 날짜 줄
+    dayRow.replaceChildren();
+    const row = document.createElement('div');
+    row.className = 'habit-row';
+    for (let d = 1; d <= lastDay; d += 1) {
+      const key = `${prefix}-${String(d).padStart(2, '0')}`;
+      const b = document.createElement('button');
+      b.className = 'habit-cell';
+      b.textContent = d;
+      b.style.fontSize = '10px';
+      if (key === picked) {
+        b.style.background = 'var(--primary)';
+        b.style.color = 'var(--surface)';
+      } else if (entries.has(key)) {
+        b.style.background = 'rgba(103,80,164,0.18)';
+      }
+      b.onclick = () => { picked = key; refresh(); };
+      row.append(b);
+    }
+    dayRow.append(row);
+
+    // 입력칸
+    const [, mm, dd] = picked.split('-');
+    input.placeholder = `${Number(mm)}월 ${Number(dd)}일 — 기억할 한 줄`;
+    input.value = entries.get(picked)?.text || '';
+
+    // 그달 기록 목록
+    written.replaceChildren();
+    [...entries.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .forEach(([key, entry]) => {
+        const row2 = document.createElement('div');
+        row2.className = 'task-row';
+        const day = document.createElement('b');
+        day.style.color = 'var(--primary)';
+        day.style.minWidth = '22px';
+        day.textContent = Number(key.slice(-2));
+        const txt = document.createElement('span');
+        txt.style.fontSize = '13px';
+        txt.textContent = entry.text;
+        row2.style.cursor = 'pointer';
+        row2.onclick = () => { picked = key; refresh(); };
+        row2.append(day, txt);
+        written.append(row2);
+      });
+  };
+
+  saveBtn.onclick = async () => {
+    const text = input.value.trim();
+    const existing = entries.get(picked);
+    saveBtn.disabled = true;
+    try {
+      if (!text && existing) {
+        await api.deleteTask(listId, existing.id);
+        entries.delete(picked);
+      } else if (text && existing) {
+        await api.patchTask(listId, existing.id, { title: text });
+        entries.set(picked, { id: existing.id, text });
+      } else if (text) {
+        const created = await api.insertTask(listId, {
+          title: text,
+          due: `${picked}T00:00:00.000Z`,
+        });
+        entries.set(picked, { id: created.id, text });
+      }
+      refresh();
+      setStatus('일기 저장됨 ✓');
+    } catch (e) {
+      setStatus(e.message, true);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  };
+
+  const inputRow = document.createElement('div');
+  inputRow.className = 'input-row';
+  inputRow.append(input, saveBtn);
+
+  refresh();
+  wrap.append(dayRow, inputRow, written);
+  return wrap;
 }
 
 function habitHeader(current, onChangeMonth) {
@@ -851,6 +993,35 @@ function openSettings() {
     };
     renderHabitChips();
     body.append(habitChips);
+
+    body.append(document.createElement('hr'));
+
+    // 일기 목록
+    body.append(sectionLabel('일기 목록'));
+    const journalInfo = document.createElement('p');
+    journalInfo.className = 'muted';
+    journalInfo.textContent =
+      '습관 격자 아래에서 그날의 한 줄을 남길 수 있습니다. 습관 목록과 다른 목록을 고르세요.';
+    body.append(journalInfo);
+
+    const journalChips = document.createElement('div');
+    journalChips.className = 'chips';
+    const renderJournalChips = () => {
+      journalChips.replaceChildren();
+      app.taskLists.forEach((l) => {
+        const chip = document.createElement('button');
+        chip.className = `chip${store.journalListId() === l.id ? ' on' : ''}`;
+        chip.textContent = l.title;
+        chip.onclick = () => {
+          store.setJournalListId(store.journalListId() === l.id ? '' : l.id);
+          renderJournalChips();
+          renderCategories();
+        };
+        journalChips.append(chip);
+      });
+    };
+    renderJournalChips();
+    body.append(journalChips);
 
     body.append(document.createElement('hr'));
 

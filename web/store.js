@@ -58,6 +58,7 @@ function emptyState() {
     listConfigs: {},
     shortcuts: {},
     habitListId: '',
+    journalListId: '',
     reminderEnabled: true,
   };
 }
@@ -177,6 +178,18 @@ export function habitListId() {
 export function setHabitListId(listId) {
   mutate((s) => {
     s.habitListId = listId || '';
+  });
+}
+
+/* ── 일기 목록 ────────────────────────────────────────── */
+
+export function journalListId() {
+  return state.journalListId || '';
+}
+
+export function setJournalListId(listId) {
+  mutate((s) => {
+    s.journalListId = listId || '';
   });
 }
 

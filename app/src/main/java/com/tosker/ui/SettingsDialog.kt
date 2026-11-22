@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -35,6 +36,7 @@ import com.tosker.viewmodel.orderedTaskLists
  * 설정 창. Google Tasks 목록별 버튼 이름/색상 설정과,
  * 문서 스캔 기능(Gemini API)에 사용할 Gemini API 키 설정을 제공한다.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsDialog(
     uiState: UiState,
@@ -43,6 +45,7 @@ fun SettingsDialog(
     onMoveList: (id: String, up: Boolean) -> Unit,
     onApiKeySave: (String) -> Unit,
     onSyncNow: () -> Unit,
+    onHabitListChange: (String?) -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -132,6 +135,49 @@ fun SettingsDialog(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline
                         )
+                    }
+                }
+
+                Divider()
+
+                // 습관 격자에 쓸 목록 지정
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "습관 목록",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Text(
+                        "이 목록의 마감일 없는 할일이 습관이 되고, 완료 기록이 격자에 X로 표시됩니다. " +
+                                "메인 화면에서 왼쪽→오른쪽으로 쓸어 넘기면 격자가 열립니다.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        uiState.taskLists.chunked(2).forEach { pair ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                pair.forEach { list ->
+                                    FilterChip(
+                                        selected = uiState.habitListId == list.id,
+                                        onClick = {
+                                            onHabitListChange(
+                                                if (uiState.habitListId == list.id) null else list.id
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                list.title,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
                     }
                 }
 

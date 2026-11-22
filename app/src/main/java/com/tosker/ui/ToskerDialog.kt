@@ -80,6 +80,12 @@ fun ToskerDialog(
     onConfigChange: (id: String, label: String, colorHex: Long) -> Unit,
     onMoveList: (id: String, up: Boolean) -> Unit,
     onOpenTodayTasks: () -> Unit,
+    onOpenHabitGrid: () -> Unit,
+    onToggleHabitMark: (habitTitle: String, date: java.time.LocalDate) -> Unit,
+    onChangeHabitMonth: (delta: Long) -> Unit,
+    onAddHabit: (String) -> Unit,
+    onCloseHabitGrid: () -> Unit,
+    onHabitListChange: (String?) -> Unit,
     onSyncNow: () -> Unit,
     onRunShortcut: (slot: Int) -> Unit,
     onSaveShortcut: (slot: Int, title: String, iconKey: String, colorHex: Long, listId: String?, markCompleted: Boolean) -> Unit,
@@ -172,13 +178,16 @@ fun ToskerDialog(
                         detectHorizontalDragGestures(
                             onDragStart = { totalDrag = 0f },
                             onDragEnd = {
-                                if (totalDrag < -80f) {
-                                    focusManager.clearFocus()
-                                    onOpenTodayTasks()
+                                focusManager.clearFocus()
+                                when {
+                                    // 우→좌: 오늘 할일
+                                    totalDrag < -80f -> onOpenTodayTasks()
+                                    // 좌→우: 습관 격자
+                                    totalDrag > 80f -> onOpenHabitGrid()
                                 }
                             }
                         ) { _, dragAmount ->
-                            if (dragAmount < 0) totalDrag += dragAmount
+                            totalDrag += dragAmount
                         }
                     },
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -444,6 +453,15 @@ fun ToskerDialog(
         )
     }
 
+    // 습관 격자 화면 (좌→우 스와이프)
+    HabitGridDialog(
+        state = uiState.habitGridState,
+        onToggle = onToggleHabitMark,
+        onChangeMonth = onChangeHabitMonth,
+        onAddHabit = onAddHabit,
+        onDismiss = onCloseHabitGrid
+    )
+
     // 오늘 할일 화면 (우→좌 스와이프)
     TodayTasksDialog(
         state = uiState.todayTasksState,
@@ -462,6 +480,7 @@ fun ToskerDialog(
             onMoveList = onMoveList,
             onApiKeySave = onApiKeySave,
             onSyncNow = onSyncNow,
+            onHabitListChange = onHabitListChange,
             onSignOut = {
                 showSettings = false
                 onSignOut()

@@ -195,6 +195,25 @@ class SettingsStore(context: Context) {
         touch()
     }
 
+    /** 습관 격자에 쓸 Google Tasks 목록 id. 지정 전에는 null. */
+    fun loadHabitListId(): String? =
+        prefs.getString(KEY_HABIT_LIST, null)?.takeIf { it.isNotBlank() }
+
+    fun saveHabitListId(listId: String?) {
+        prefs.edit().apply {
+            if (listId.isNullOrBlank()) remove(KEY_HABIT_LIST) else putString(KEY_HABIT_LIST, listId)
+        }.apply()
+        touch()
+    }
+
+    /** 저녁 알림 사용 여부 (기본 켜짐) */
+    fun loadReminderEnabled(): Boolean = prefs.getBoolean(KEY_REMINDER, true)
+
+    fun saveReminderEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_REMINDER, enabled).apply()
+        touch()
+    }
+
     /** 설정이 마지막으로 바뀐 시각(epoch millis). 동기화 충돌 해결에 쓴다. */
     fun loadUpdatedAt(): Long = prefs.getLong(KEY_UPDATED_AT, 0L)
 
@@ -232,6 +251,8 @@ class SettingsStore(context: Context) {
             .put("updatedAt", loadUpdatedAt())
             .put("listConfigs", listConfigs)
             .put("shortcuts", shortcuts)
+            .put("habitListId", loadHabitListId() ?: "")
+            .put("reminderEnabled", loadReminderEnabled())
             .toString()
     }
 
@@ -250,6 +271,16 @@ class SettingsStore(context: Context) {
             .putString(KEY_SHORTCUTS, shortcuts.toString())
             .putLong(KEY_UPDATED_AT, remoteUpdatedAt)
             .apply()
+
+        // 습관 목록 / 알림 설정도 함께 받아온다.
+        obj.optString("habitListId").let { id ->
+            prefs.edit().apply {
+                if (id.isBlank()) remove(KEY_HABIT_LIST) else putString(KEY_HABIT_LIST, id)
+            }.apply()
+        }
+        if (obj.has("reminderEnabled")) {
+            prefs.edit().putBoolean(KEY_REMINDER, obj.optBoolean("reminderEnabled", true)).apply()
+        }
         true
     }.getOrDefault(false)
 
@@ -258,5 +289,7 @@ class SettingsStore(context: Context) {
         const val KEY_GEMINI_API_KEY = "gemini_api_key"
         const val KEY_SHORTCUTS = "shortcuts"
         const val KEY_UPDATED_AT = "settings_updated_at"
+        const val KEY_HABIT_LIST = "habit_list_id"
+        const val KEY_REMINDER = "reminder_enabled"
     }
 }

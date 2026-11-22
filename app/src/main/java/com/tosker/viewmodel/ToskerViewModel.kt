@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -123,6 +124,22 @@ sealed class TodayTasksState {
     data class Error(val message: String) : TodayTasksState()
 }
 
+/** 습관 격자의 세로축 한 줄 (Tasks의 마감일 없는 미완료 할일) */
+data class HabitDef(val taskId: String, val title: String)
+
+/** 습관 격자 화면 상태 */
+sealed class HabitGridState {
+    object Hidden : HabitGridState()
+    object Loading : HabitGridState()
+    data class Loaded(
+        val month: YearMonth,
+        val habits: List<HabitDef>,
+        /** (습관 제목, 날짜) -> 그 기록 할일의 id */
+        val marks: Map<Pair<String, LocalDate>, String>
+    ) : HabitGridState()
+    data class Error(val message: String) : HabitGridState()
+}
+
 data class UiState(
     val authState: AuthState = AuthState.Loading,
     val authError: String? = null,
@@ -138,7 +155,10 @@ data class UiState(
     /** Upload 아래 단축버튼 (슬롯 0~9) */
     val shortcuts: Map<Int, ShortcutConfig> = emptyMap(),
     /** 설정의 기기 간 동기화 상태 */
-    val syncState: SyncState = SyncState.Idle
+    val syncState: SyncState = SyncState.Idle,
+    val habitGridState: HabitGridState = HabitGridState.Hidden,
+    /** 습관 격자에 쓸 Tasks 목록 id */
+    val habitListId: String? = null
 )
 
 /** 설정 동기화(Google Drive 앱 전용 폴더) 상태 */
@@ -149,6 +169,8 @@ sealed class SyncState {
     data class Error(val message: String) : SyncState()
 }
 
+private const val PENDING_MARK = "__pending__"
+
 class ToskerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val settingsStore = SettingsStore(application)
@@ -156,7 +178,8 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
     private val _uiState = MutableStateFlow(
         UiState(
             listConfigs = settingsStore.loadConfigs(),
-            shortcuts = settingsStore.loadShortcuts()
+            shortcuts = settingsStore.loadShortcuts(),
+            habitListId = settingsStore.loadHabitListId()
         )
     )
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -206,6 +229,7 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                     it.copy(
                         listConfigs = settingsStore.loadConfigs(),
                         shortcuts = settingsStore.loadShortcuts(),
+                        habitListId = settingsStore.loadHabitListId(),
                         syncState = SyncState.Synced(System.currentTimeMillis())
                     )
                 } else {
@@ -342,7 +366,8 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
             UiState(
                 authState = AuthState.LoggedOut,
                 listConfigs = it.listConfigs,
-                shortcuts = it.shortcuts
+                shortcuts = it.shortcuts,
+                habitListId = it.habitListId
             )
         }
     }
@@ -415,6 +440,191 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearError() {
         _uiState.update { it.copy(uploadState = UploadState.Idle) }
+    }
+
+    // ── 월간 습관 격자 ────────────────────────────────────────────────
+
+    /**
+     * 습관 목록(Tasks 목록 하나)에서 습관 정의와 그달의 기록을 읽어 격자를 만든다.
+     * - 정의: 마감일 없는 미완료 할일
+     * - 기록: 완료 상태이고 마감일이 그달인 할일 (제목이 정의와 같음)
+     */
+    fun openHabitGrid(month: YearMonth = YearMonth.now()) {
+        val listId = _uiState.value.habitListId
+        val service = tasksService
+        if (listId.isNullOrBlank()) {
+            _uiState.update {
+                it.copy(
+                    habitGridState = HabitGridState.Error(
+                        "설정에서 습관 목록을 먼저 지정하세요."
+                    )
+                )
+            }
+            return
+        }
+        if (service == null) {
+            _uiState.update {
+                it.copy(habitGridState = HabitGridState.Error("로그인이 필요합니다."))
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(habitGridState = HabitGridState.Loading) }
+
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val all = mutableListOf<Task>()
+                    var pageToken: String? = null
+                    do {
+                        val response = service.tasks().list(listId)
+                            .setShowCompleted(true)
+                            .setShowHidden(true)
+                            .setPageToken(pageToken)
+                            .execute()
+                        all += response.items.orEmpty()
+                        pageToken = response.nextPageToken
+                    } while (!pageToken.isNullOrBlank() && all.size < 1000)
+
+                    val habits = all
+                        .filter { it.due.isNullOrBlank() && it.status != "completed" }
+                        .mapNotNull { task ->
+                            val id = task.id ?: return@mapNotNull null
+                            val title = task.title?.trim().orEmpty()
+                            if (title.isBlank()) null else HabitDef(id, title)
+                        }
+
+                    val marks = buildMap {
+                        all.forEach { task ->
+                            if (task.status != "completed") return@forEach
+                            val id = task.id ?: return@forEach
+                            val title = task.title?.trim().orEmpty()
+                            if (title.isBlank()) return@forEach
+                            val date = parseDueDate(task.due) ?: return@forEach
+                            if (YearMonth.from(date) != month) return@forEach
+                            put(title to date, id)
+                        }
+                    }
+
+                    HabitGridState.Loaded(month, habits, marks)
+                }
+            }
+
+            _uiState.update {
+                if (result.isSuccess) {
+                    it.copy(habitGridState = result.getOrThrow())
+                } else {
+                    val msg = result.exceptionOrNull()?.message ?: "습관 기록을 불러오지 못했습니다."
+                    it.copy(habitGridState = HabitGridState.Error(msg))
+                }
+            }
+        }
+    }
+
+    fun closeHabitGrid() {
+        _uiState.update { it.copy(habitGridState = HabitGridState.Hidden) }
+    }
+
+    /** 격자에서 월을 앞뒤로 이동 */
+    fun changeHabitMonth(deltaMonths: Long) {
+        val current = _uiState.value.habitGridState as? HabitGridState.Loaded ?: return
+        openHabitGrid(current.month.plusMonths(deltaMonths))
+    }
+
+    /** 격자 칸을 눌렀을 때: 기록이 있으면 지우고, 없으면 그 날짜로 추가한다. */
+    fun toggleHabitMark(habitTitle: String, date: LocalDate) {
+        val state = _uiState.value
+        val loaded = state.habitGridState as? HabitGridState.Loaded ?: return
+        val listId = state.habitListId ?: return
+        val service = tasksService ?: return
+
+        val key = habitTitle to date
+        val existingId = loaded.marks[key]
+
+        // 먼저 화면을 바꿔 바로 반응하게 하고, 실패하면 되돌린다.
+        val optimistic = loaded.marks.toMutableMap().apply {
+            if (existingId != null) remove(key) else put(key, PENDING_MARK)
+        }
+        _uiState.update { it.copy(habitGridState = loaded.copy(marks = optimistic)) }
+
+        viewModelScope.launch {
+            val stamp = date
+                .atStartOfDay(ZoneId.of("UTC"))
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
+
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (existingId != null) {
+                        service.tasks().delete(listId, existingId).execute()
+                        null
+                    } else {
+                        val task = Task().apply {
+                            title = habitTitle
+                            due = stamp
+                            status = "completed"
+                            completed = stamp
+                        }
+                        service.tasks().insert(listId, task).execute().id
+                    }
+                }
+            }
+
+            _uiState.update { ui ->
+                val current = ui.habitGridState as? HabitGridState.Loaded ?: return@update ui
+                val fixed = current.marks.toMutableMap()
+                if (result.isSuccess) {
+                    val newId = result.getOrNull()
+                    if (newId != null) fixed[key] = newId
+                } else {
+                    // 실패하면 원래 상태로 되돌린다.
+                    if (existingId != null) fixed[key] = existingId else fixed.remove(key)
+                }
+                ui.copy(
+                    habitGridState = current.copy(marks = fixed),
+                    uploadState = if (result.isFailure) {
+                        UploadState.Error(result.exceptionOrNull()?.message ?: "기록 변경 실패")
+                    } else {
+                        ui.uploadState
+                    }
+                )
+            }
+        }
+    }
+
+    /** Tosker에서 습관을 새로 추가한다(마감일 없는 미완료 할일로 생성). */
+    fun addHabit(title: String) {
+        val clean = title.trim()
+        if (clean.isBlank()) return
+        val state = _uiState.value
+        val listId = state.habitListId ?: return
+        val service = tasksService ?: return
+        val month = (state.habitGridState as? HabitGridState.Loaded)?.month ?: YearMonth.now()
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    service.tasks().insert(listId, Task().apply { this.title = clean }).execute()
+                }
+            }
+            if (result.isSuccess) {
+                openHabitGrid(month)
+            } else {
+                _uiState.update {
+                    it.copy(
+                        uploadState = UploadState.Error(
+                            result.exceptionOrNull()?.message ?: "습관 추가 실패"
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    /** 설정에서 습관 목록을 지정한다. */
+    fun setHabitList(listId: String?) {
+        settingsStore.saveHabitListId(listId)
+        _uiState.update { it.copy(habitListId = listId) }
+        pushSettings()
     }
 
     // ── Upload 아래 단축버튼 ──────────────────────────────────────────

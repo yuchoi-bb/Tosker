@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.Manifest
+import android.content.pm.PackageManager
 import android.speech.RecognizerIntent
 import android.view.WindowManager
 import android.widget.Toast
@@ -29,6 +31,7 @@ import com.google.android.gms.common.api.Scope
 import com.google.api.services.calendar.CalendarScopes
 import com.google.api.services.drive.DriveScopes
 import com.google.api.services.tasks.TasksScopes
+import com.tosker.reminder.HabitReminder
 import com.tosker.ui.ToskerApp
 import com.tosker.update.UpdateInfo
 import com.tosker.viewmodel.ToskerViewModel
@@ -223,11 +226,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* 거부해도 앱은 그대로 동작한다 */ }
+
+    /** 저녁 알림을 위해 알림 권한을 확인하고, 알람을 예약한다. */
+    private fun setUpReminder() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        HabitReminder.apply(this)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // 잠금화면 위에 표시 + 꺼진 화면 켜기 (빠른설정 타일/알림에서 바로 실행 가능)
         enableShowWhenLocked()
+
+        setUpReminder()
 
         // 다운로드 완료 브로드캐스트 등록
         ContextCompat.registerReceiver(

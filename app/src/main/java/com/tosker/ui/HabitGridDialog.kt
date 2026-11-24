@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,14 +57,15 @@ fun HabitGridDialog(
     onChangeMonth: (delta: Long) -> Unit,
     onAddHabit: (String) -> Unit,
     onDeleteHabit: (title: String, alsoRecords: Boolean) -> Unit,
+    onRenameHabit: (oldTitle: String, newTitle: String) -> Unit,
     onSaveJournal: (date: LocalDate, text: String) -> Unit,
     onDismiss: () -> Unit
 ) {
     if (state is HabitGridState.Hidden) return
 
     var showAddHabit by remember { mutableStateOf(false) }
-    // 삭제 확인 중인 습관 이름
-    var deletingHabit by remember { mutableStateOf<String?>(null) }
+    // 수정 창을 띄운 습관 이름
+    var editingHabit by remember { mutableStateOf<String?>(null) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -88,12 +90,22 @@ fun HabitGridDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("습관 기록", style = MaterialTheme.typography.titleLarge)
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "닫기",
-                            tint = MaterialTheme.colorScheme.outline
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // 저장된 내용 말고 지금 바로 다시 읽어오기
+                        IconButton(onClick = { onChangeMonth(0) }) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "새로고침",
+                                tint = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "닫기",
+                                tint = MaterialTheme.colorScheme.outline
+                            )
+                        }
                     }
                 }
 
@@ -132,7 +144,7 @@ fun HabitGridDialog(
                             HabitGrid(
                                 state = state,
                                 onToggle = onToggle,
-                                onDeleteHabit = { deletingHabit = it }
+                                onDeleteHabit = { editingHabit = it }
                             )
                         }
 
@@ -160,30 +172,18 @@ fun HabitGridDialog(
         }
     }
 
-    deletingHabit?.let { title ->
-        AlertDialog(
-            onDismissRequest = { deletingHabit = null },
-            title = { Text("습관 삭제") },
-            text = {
-                Text("「$title」을(를) 격자에서 지울까요?\n지난 X 기록은 남겨둘 수 있습니다.")
+    editingHabit?.let { title ->
+        HabitEditDialog(
+            title = title,
+            onRename = { newTitle ->
+                onRenameHabit(title, newTitle)
+                editingHabit = null
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    onDeleteHabit(title, false)
-                    deletingHabit = null
-                }) { Text("습관만 삭제") }
+            onDelete = { alsoRecords ->
+                onDeleteHabit(title, alsoRecords)
+                editingHabit = null
             },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = {
-                        onDeleteHabit(title, true)
-                        deletingHabit = null
-                    }) {
-                        Text("기록까지 삭제", color = MaterialTheme.colorScheme.error)
-                    }
-                    TextButton(onClick = { deletingHabit = null }) { Text("취소") }
-                }
-            }
+            onDismiss = { editingHabit = null }
         )
     }
 
@@ -482,6 +482,72 @@ private fun HabitGrid(
             }
         }
     }
+}
+
+/**
+ * 습관 수정 창.
+ * 습관은 제목으로 기록과 이어져 있어서, 이름을 바꾸면 지난 기록 제목도 같이 바뀐다.
+ */
+@Composable
+private fun HabitEditDialog(
+    title: String,
+    onRename: (String) -> Unit,
+    onDelete: (alsoRecords: Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var newTitle by remember(title) { mutableStateOf(title) }
+    var confirmingDelete by remember(title) { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (confirmingDelete) "습관 삭제" else "습관 수정") },
+        text = {
+            if (confirmingDelete) {
+                Text("「$title」을(를) 지울까요?\n지난 기록은 남겨둘 수 있습니다.")
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newTitle,
+                        onValueChange = { newTitle = it },
+                        label = { Text("습관 이름") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "이름을 바꾸면 지난 기록도 함께 바뀌어 격자가 이어집니다. " +
+                                "이미 같은 이름의 줄이 있으면 하나로 합쳐집니다.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (confirmingDelete) {
+                TextButton(onClick = { onDelete(false) }) { Text("습관만 삭제") }
+            } else {
+                TextButton(
+                    onClick = { onRename(newTitle) },
+                    enabled = newTitle.isNotBlank() && newTitle.trim() != title
+                ) { Text("이름 바꾸기") }
+            }
+        },
+        dismissButton = {
+            Row {
+                if (confirmingDelete) {
+                    TextButton(onClick = { onDelete(true) }) {
+                        Text("기록까지 삭제", color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(onClick = { confirmingDelete = false }) { Text("뒤로") }
+                } else {
+                    TextButton(onClick = { confirmingDelete = true }) {
+                        Text("삭제", color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(onClick = onDismiss) { Text("취소") }
+                }
+            }
+        }
+    )
 }
 
 @Composable

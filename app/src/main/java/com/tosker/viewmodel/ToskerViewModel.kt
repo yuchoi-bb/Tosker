@@ -872,6 +872,61 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
      * 습관 목록에서 그 제목의 미완료 할일(정의)을 지우고, 지난 기록은 남긴다.
      * [alsoRecords]가 true면 그 제목의 완료 기록까지 전부 지운다.
      */
+    /**
+     * 습관 이름을 바꾼다.
+     * 습관은 "제목"으로 기록과 이어져 있어서, 정의뿐 아니라
+     * 그 제목으로 남은 지난 기록까지 전부 같이 바꿔야 매칭이 유지된다.
+     *
+     * 이미 [newTitle] 줄이 따로 있으면 두 줄이 하나로 합쳐진다.
+     */
+    fun renameHabit(oldTitle: String, newTitle: String) {
+        val clean = newTitle.trim()
+        if (clean.isBlank() || clean == oldTitle) return
+        val state = _uiState.value
+        val listId = state.habitListId ?: return
+        val service = tasksService ?: return
+        val month = (state.habitGridState as? HabitGridState.Loaded)?.month ?: YearMonth.now()
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val all = mutableListOf<Task>()
+                    var pageToken: String? = null
+                    do {
+                        val response = service.tasks().list(listId)
+                            .setShowCompleted(true)
+                            .setShowHidden(true)
+                            .setPageToken(pageToken)
+                            .execute()
+                        all += response.items.orEmpty()
+                        pageToken = response.nextPageToken
+                    } while (!pageToken.isNullOrBlank() && all.size < 1000)
+
+                    all.filter { it.title?.trim() == oldTitle }
+                        .forEach { task ->
+                            task.id?.let { id ->
+                                service.tasks()
+                                    .patch(listId, id, Task().apply { title = clean })
+                                    .execute()
+                            }
+                        }
+                }
+            }
+
+            if (result.isSuccess) {
+                openHabitGrid(month)
+            } else {
+                _uiState.update {
+                    it.copy(
+                        uploadState = UploadState.Error(
+                            result.exceptionOrNull()?.message ?: "이름 변경 실패"
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     fun deleteHabit(title: String, alsoRecords: Boolean = false) {
         val state = _uiState.value
         val listId = state.habitListId ?: return

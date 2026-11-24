@@ -50,6 +50,7 @@ fun ToskerApp(
             onChangeHabitMonth = viewModel::changeHabitMonth,
             onAddHabit = viewModel::addHabit,
             onDeleteHabit = viewModel::deleteHabit,
+            onRenameHabit = viewModel::renameHabit,
             onCloseHabitGrid = viewModel::closeHabitGrid,
             onHabitListChange = viewModel::setHabitList,
             onJournalListChange = viewModel::setJournalList,

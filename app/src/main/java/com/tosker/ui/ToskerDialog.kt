@@ -87,6 +87,7 @@ fun ToskerDialog(
     onChangeHabitMonth: (delta: Long) -> Unit,
     onAddHabit: (String) -> Unit,
     onDeleteHabit: (title: String, alsoRecords: Boolean) -> Unit,
+    onRenameHabit: (oldTitle: String, newTitle: String) -> Unit,
     onCloseHabitGrid: () -> Unit,
     onHabitListChange: (String?) -> Unit,
     onJournalListChange: (String?) -> Unit,
@@ -494,6 +495,7 @@ fun ToskerDialog(
         onChangeMonth = onChangeHabitMonth,
         onAddHabit = onAddHabit,
         onDeleteHabit = onDeleteHabit,
+        onRenameHabit = onRenameHabit,
         onDismiss = onCloseHabitGrid
     )
 

@@ -27,6 +27,7 @@ import com.tosker.settings.ShortcutConfig
 import com.tosker.sync.DriveSettingsSync
 import com.tosker.update.UpdateChecker
 import com.tosker.update.UpdateInfo
+import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -124,6 +125,17 @@ sealed class TodayTasksState {
     data class Error(val message: String) : TodayTasksState()
 }
 
+/**
+ * 격자 한 칸의 상태.
+ * [DONE]  = 한 것 (V)   — 완료 상태로 저장된 기록
+ * [SKIPPED] = 안 한 것 (X) — 완료되지 않은 날짜 기록
+ * 기록이 아예 없으면 빈 칸([])이라 이 값으로 표현하지 않는다.
+ */
+enum class HabitMarkState { DONE, SKIPPED }
+
+/** 격자 한 칸에 저장된 기록 (어떤 할일이고 어떤 상태인지) */
+data class HabitMark(val taskId: String, val state: HabitMarkState)
+
 /** 그날의 한 줄 일기 (일기 목록의 할일 하나) */
 data class JournalEntry(val taskId: String, val date: LocalDate, val text: String)
 
@@ -138,7 +150,7 @@ sealed class HabitGridState {
         val month: YearMonth,
         val habits: List<HabitDef>,
         /** (습관 제목, 날짜) -> 그 기록 할일의 id */
-        val marks: Map<Pair<String, LocalDate>, String>,
+        val marks: Map<Pair<String, LocalDate>, HabitMark>,
         /** 날짜 -> 그날의 한 줄 일기 */
         val journal: Map<LocalDate, JournalEntry> = emptyMap()
     ) : HabitGridState()
@@ -456,6 +468,73 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(uploadState = UploadState.Idle) }
     }
 
+    // ── 습관 격자 캐시 (기기 저장) ──────────────────────────────────
+
+    /** 지금 화면에 있는 격자를 기기에 저장해 둔다. */
+    private fun cacheCurrentGrid() {
+        val state = _uiState.value
+        val loaded = state.habitGridState as? HabitGridState.Loaded ?: return
+        val listId = state.habitListId ?: return
+        runCatching {
+            val obj = JSONObject()
+            obj.put("habits", JSONArray().apply {
+                loaded.habits.forEach { put(JSONObject().put("id", it.taskId).put("t", it.title)) }
+            })
+            obj.put("marks", JSONArray().apply {
+                loaded.marks.forEach { (key, mark) ->
+                    put(
+                        JSONObject()
+                            .put("t", key.first)
+                            .put("d", key.second.toString())
+                            .put("id", mark.taskId)
+                            .put("s", mark.state.name)
+                    )
+                }
+            })
+            obj.put("journal", JSONArray().apply {
+                loaded.journal.values.forEach {
+                    put(JSONObject().put("id", it.taskId).put("d", it.date.toString()).put("x", it.text))
+                }
+            })
+            settingsStore.saveHabitCache(listId, loaded.month.toString(), obj.toString())
+        }
+    }
+
+    /** 기기에 저장해 둔 격자를 읽어온다. 없거나 깨졌으면 null. */
+    private fun readCachedGrid(listId: String, month: YearMonth): HabitGridState.Loaded? =
+        runCatching {
+            val raw = settingsStore.loadHabitCache(listId, month.toString()) ?: return null
+            val obj = JSONObject(raw)
+
+            val habitsArr = obj.getJSONArray("habits")
+            val habits = (0 until habitsArr.length()).map { i ->
+                val o = habitsArr.getJSONObject(i)
+                HabitDef(o.getString("id"), o.getString("t"))
+            }
+
+            val marksArr = obj.getJSONArray("marks")
+            val marks = buildMap {
+                for (i in 0 until marksArr.length()) {
+                    val o = marksArr.getJSONObject(i)
+                    put(
+                        o.getString("t") to LocalDate.parse(o.getString("d")),
+                        HabitMark(o.getString("id"), HabitMarkState.valueOf(o.getString("s")))
+                    )
+                }
+            }
+
+            val journalArr = obj.optJSONArray("journal") ?: JSONArray()
+            val journal = buildMap {
+                for (i in 0 until journalArr.length()) {
+                    val o = journalArr.getJSONObject(i)
+                    val date = LocalDate.parse(o.getString("d"))
+                    put(date, JournalEntry(o.getString("id"), date, o.getString("x")))
+                }
+            }
+
+            HabitGridState.Loaded(month, habits, marks, journal)
+        }.getOrNull()
+
     // ── 월간 습관 격자 ────────────────────────────────────────────────
 
     /**
@@ -484,7 +563,11 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(habitGridState = HabitGridState.Loading) }
+            // 기기에 저장해 둔 게 있으면 먼저 보여주고, 뒤에서 조용히 새로 읽어 맞춘다.
+            val cached = readCachedGrid(listId, month)
+            _uiState.update {
+                it.copy(habitGridState = cached ?: HabitGridState.Loading)
+            }
 
             val result = withContext(Dispatchers.IO) {
                 runCatching {
@@ -510,20 +593,28 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                         }
                         .groupBy({ it.first }, { it.second })
                         .map { (title, tasks) ->
-                            // 지울 때 쓸 "정의" 할일(미완료)이 있으면 그 id를 들고 있는다.
-                            val definition = tasks.firstOrNull { it.status != "completed" }
+                            // 지울 때 쓸 "정의" 할일(날짜 없는 미완료)이 있으면 그 id를 든다.
+                            val definition = tasks.firstOrNull {
+                                it.status != "completed" && it.due.isNullOrBlank()
+                            }
                             HabitDef(definition?.id ?: tasks.first().id.orEmpty(), title)
                         }
 
+                    // 날짜가 붙은 할일만 그달의 기록으로 본다.
+                    // 완료 = 한 것(V), 미완료 = 안 한 것(X).
                     val marks = buildMap {
                         all.forEach { task ->
-                            if (task.status != "completed") return@forEach
                             val id = task.id ?: return@forEach
                             val title = task.title?.trim().orEmpty()
                             if (title.isBlank()) return@forEach
                             val date = parseDueDate(task.due) ?: return@forEach
                             if (YearMonth.from(date) != month) return@forEach
-                            put(title to date, id)
+                            val state = if (task.status == "completed") {
+                                HabitMarkState.DONE
+                            } else {
+                                HabitMarkState.SKIPPED
+                            }
+                            put(title to date, HabitMark(id, state))
                         }
                     }
 
@@ -561,13 +652,19 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             _uiState.update {
-                if (result.isSuccess) {
-                    it.copy(habitGridState = result.getOrThrow())
-                } else {
-                    val msg = result.exceptionOrNull()?.message ?: "습관 기록을 불러오지 못했습니다."
-                    it.copy(habitGridState = HabitGridState.Error(msg))
+                when {
+                    result.isSuccess -> it.copy(habitGridState = result.getOrThrow())
+                    // 새로 읽기에 실패해도 저장해 둔 게 있으면 그걸 계속 보여준다.
+                    cached != null -> it.copy(
+                        uploadState = UploadState.Error("최신 기록을 불러오지 못해 저장된 내용을 보여줍니다.")
+                    )
+                    else -> {
+                        val msg = result.exceptionOrNull()?.message ?: "습관 기록을 불러오지 못했습니다."
+                        it.copy(habitGridState = HabitGridState.Error(msg))
+                    }
                 }
             }
+            if (result.isSuccess) cacheCurrentGrid()
         }
     }
 
@@ -582,6 +679,10 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** 격자 칸을 눌렀을 때: 기록이 있으면 지우고, 없으면 그 날짜로 추가한다. */
+    /**
+     * 격자 칸을 누르면 빈칸 → 한 것(V) → 안 한 것(X) → 빈칸 순으로 돈다.
+     * 화면을 먼저 바꿔 바로 반응하게 하고, 통신이 실패하면 원래대로 되돌린다.
+     */
     fun toggleHabitMark(habitTitle: String, date: LocalDate) {
         val state = _uiState.value
         val loaded = state.habitGridState as? HabitGridState.Loaded ?: return
@@ -589,13 +690,18 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
         val service = tasksService ?: return
 
         val key = habitTitle to date
-        val existingId = loaded.marks[key]
+        val before = loaded.marks[key]
+        val next = when (before?.state) {
+            null -> HabitMarkState.DONE
+            HabitMarkState.DONE -> HabitMarkState.SKIPPED
+            HabitMarkState.SKIPPED -> null // 다시 빈칸으로
+        }
 
-        // 먼저 화면을 바꿔 바로 반응하게 하고, 실패하면 되돌린다.
         val optimistic = loaded.marks.toMutableMap().apply {
-            if (existingId != null) remove(key) else put(key, PENDING_MARK)
+            if (next == null) remove(key) else put(key, HabitMark(before?.taskId ?: PENDING_MARK, next))
         }
         _uiState.update { it.copy(habitGridState = loaded.copy(marks = optimistic)) }
+        cacheCurrentGrid()
 
         viewModelScope.launch {
             val stamp = date
@@ -604,17 +710,38 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
 
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    if (existingId != null) {
-                        service.tasks().delete(listId, existingId).execute()
-                        null
-                    } else {
-                        val task = Task().apply {
-                            title = habitTitle
-                            due = stamp
-                            status = "completed"
-                            completed = stamp
+                    when {
+                        // 기록 지우기
+                        next == null -> {
+                            before?.taskId?.let { service.tasks().delete(listId, it).execute() }
+                            null
                         }
-                        service.tasks().insert(listId, task).execute().id
+                        // 기록 없음 → 새로 만들기
+                        before == null -> {
+                            service.tasks().insert(
+                                listId,
+                                Task().apply {
+                                    title = habitTitle
+                                    due = stamp
+                                    status = "completed"
+                                    completed = stamp
+                                }
+                            ).execute().id
+                        }
+                        // 있던 기록의 상태만 바꾸기
+                        else -> {
+                            val patch = Task().apply {
+                                if (next == HabitMarkState.DONE) {
+                                    status = "completed"
+                                    completed = stamp
+                                } else {
+                                    status = "needsAction"
+                                    completed = null
+                                }
+                            }
+                            service.tasks().patch(listId, before.taskId, patch).execute()
+                            before.taskId
+                        }
                     }
                 }
             }
@@ -623,11 +750,11 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                 val current = ui.habitGridState as? HabitGridState.Loaded ?: return@update ui
                 val fixed = current.marks.toMutableMap()
                 if (result.isSuccess) {
-                    val newId = result.getOrNull()
-                    if (newId != null) fixed[key] = newId
+                    val id = result.getOrNull()
+                    if (next != null && id != null) fixed[key] = HabitMark(id, next)
                 } else {
                     // 실패하면 원래 상태로 되돌린다.
-                    if (existingId != null) fixed[key] = existingId else fixed.remove(key)
+                    if (before != null) fixed[key] = before else fixed.remove(key)
                 }
                 ui.copy(
                     habitGridState = current.copy(marks = fixed),
@@ -638,6 +765,7 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 )
             }
+            cacheCurrentGrid()
         }
     }
 

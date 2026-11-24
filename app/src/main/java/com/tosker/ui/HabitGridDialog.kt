@@ -20,6 +20,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -27,9 +30,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.tosker.viewmodel.HabitGridState
+import com.tosker.viewmodel.HabitMarkState
 import java.time.LocalDate
 import java.time.YearMonth
+
+/** 한 것(V) 표시 색 */
+private val DONE_COLOR = Color(0xFF2E7D32)
 
 private val LABEL_WIDTH = 86.dp
 private val CELL_SIZE = 26.dp
@@ -57,8 +65,12 @@ fun HabitGridDialog(
     // 삭제 확인 중인 습관 이름
     var deletingHabit by remember { mutableStateOf<String?>(null) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
+            modifier = Modifier.fillMaxWidth(0.97f),
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
@@ -219,11 +231,24 @@ private fun JournalSection(
         mutableStateOf(state.journal[pickedDate]?.text.orEmpty())
     }
 
+    val journalScroll = rememberScrollState()
+    val density = LocalDensity.current
+    val focusRequester = remember { FocusRequester() }
+
+    // 일기 날짜 줄도 오늘이 보이게 맞춘다.
+    LaunchedEffect(state.month, journalScroll.maxValue) {
+        if (journalScroll.maxValue == 0) return@LaunchedEffect
+        val cellPx = with(density) { CELL_SIZE.toPx() }
+        val target = ((pickedDate.dayOfMonth - 3) * cellPx).toInt()
+            .coerceIn(0, journalScroll.maxValue)
+        journalScroll.animateScrollTo(target)
+    }
+
     // 날짜 고르기
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .horizontalScroll(journalScroll),
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         (1..state.month.lengthOfMonth()).forEach { day ->
@@ -261,7 +286,9 @@ private fun JournalSection(
         label = {
             Text("${pickedDate.monthValue}월 ${pickedDate.dayOfMonth}일 — 기억할 한 줄")
         },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester),
         maxLines = 3
     )
 
@@ -269,7 +296,11 @@ private fun JournalSection(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
     ) {
-        TextButton(onClick = { onSave(pickedDate, text) }) { Text("저장") }
+        TextButton(onClick = {
+            onSave(pickedDate, text)
+            // 저장한 뒤에도 커서를 입력칸에 둬서 이어서 쓸 수 있게 한다.
+            focusRequester.requestFocus()
+        }) { Text("저장") }
     }
 
     // 그달에 쓴 기록 목록
@@ -277,7 +308,7 @@ private fun JournalSection(
     if (written.isNotEmpty()) {
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
-            modifier = Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())
+            modifier = Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState())
         ) {
             written.forEach { entry ->
                 Row(
@@ -338,15 +369,27 @@ private fun HabitGrid(
     val days = (1..state.month.lengthOfMonth()).map { state.month.atDay(it) }
     val today = LocalDate.now()
     val dayScroll = rememberScrollState()
+    val density = LocalDensity.current
 
-    Row(modifier = Modifier.heightIn(max = 380.dp)) {
+    // 열면 1일이 아니라 오늘이 보이도록 가로 스크롤을 맞춘다.
+    LaunchedEffect(state.month, dayScroll.maxValue) {
+        if (YearMonth.from(today) != state.month || dayScroll.maxValue == 0) return@LaunchedEffect
+        val cellPx = with(density) { CELL_SIZE.toPx() }
+        // 오늘 칸이 왼쪽에서 두 칸쯤 들어오게 둔다.
+        val target = ((today.dayOfMonth - 3) * cellPx).toInt().coerceIn(0, dayScroll.maxValue)
+        dayScroll.animateScrollTo(target)
+    }
+
+    Row(modifier = Modifier.heightIn(max = 560.dp)) {
         // 왼쪽 고정 열: 습관 이름 + 달성률
         Column(modifier = Modifier.width(LABEL_WIDTH)) {
             // 날짜 머리글과 높이를 맞추기 위한 빈 칸
             Spacer(Modifier.height(CELL_SIZE))
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 state.habits.forEach { habit ->
-                    val done = days.count { state.marks.containsKey(habit.title to it) }
+                    val done = days.count {
+                state.marks[habit.title to it]?.state == HabitMarkState.DONE
+            }
                     Column(
                         modifier = Modifier
                             .height(CELL_SIZE)
@@ -395,7 +438,7 @@ private fun HabitGrid(
                 state.habits.forEach { habit ->
                     Row {
                         days.forEach { date ->
-                            val marked = state.marks.containsKey(habit.title to date)
+                            val mark = state.marks[habit.title to date]
                             val isToday = date == today
                             Box(
                                 contentAlignment = Alignment.Center,
@@ -414,14 +457,23 @@ private fun HabitGrid(
                                     )
                                     .clickable { onToggle(habit.title, date) }
                             ) {
-                                if (marked) {
-                                    Text(
-                                        text = "X",
-                                        fontSize = 13.sp,
+                                // 한 것 V(초록) / 안 한 것 X(빨강) / 기록 없음은 빈 칸
+                                when (mark?.state) {
+                                    HabitMarkState.DONE -> Text(
+                                        text = "V",
+                                        fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
                                         textAlign = TextAlign.Center,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = DONE_COLOR
                                     )
+                                    HabitMarkState.SKIPPED -> Text(
+                                        text = "X",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                    null -> {}
                                 }
                             }
                         }

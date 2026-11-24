@@ -29,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.tosker.R
 import com.tosker.settings.CategoryDefaults
 import com.tosker.viewmodel.TaskListItem
@@ -113,6 +114,9 @@ fun ToskerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        // 기본 창이 좁아 글자가 줄바꿈되므로 화면 폭을 거의 다 쓴다.
+        modifier = Modifier.fillMaxWidth(0.97f),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),

@@ -225,6 +225,19 @@ class SettingsStore(context: Context) {
         touch()
     }
 
+    /**
+     * 습관 격자를 기기에 저장해 둔다(목록+월 단위).
+     * 다음에 열 때 통신을 기다리지 않고 바로 보여주기 위한 것이다.
+     */
+    fun loadHabitCache(listId: String, month: String): String? =
+        prefs.getString(habitCacheKey(listId, month), null)
+
+    fun saveHabitCache(listId: String, month: String, json: String) {
+        prefs.edit().putString(habitCacheKey(listId, month), json).apply()
+    }
+
+    private fun habitCacheKey(listId: String, month: String) = "habit_cache_${listId}_$month"
+
     /** 설정이 마지막으로 바뀐 시각(epoch millis). 동기화 충돌 해결에 쓴다. */
     fun loadUpdatedAt(): Long = prefs.getLong(KEY_UPDATED_AT, 0L)
 

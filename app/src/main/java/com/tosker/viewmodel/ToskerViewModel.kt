@@ -190,6 +190,9 @@ sealed class SyncState {
 
 private const val PENDING_MARK = "__pending__"
 
+/** "안 한 것(X)"으로 직접 찍은 기록임을 나타내는 표시. 평범한 할일과 구분한다. */
+const val SKIP_MARKER = "[tosker:skip]"
+
 class ToskerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val settingsStore = SettingsStore(application)
@@ -601,21 +604,29 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                         }
 
                     // 날짜가 붙은 할일만 그달의 기록으로 본다.
-                    // 완료 = 한 것(V), 미완료 = 안 한 것(X).
-                    val marks = buildMap {
-                        all.forEach { task ->
-                            val id = task.id ?: return@forEach
-                            val title = task.title?.trim().orEmpty()
-                            if (title.isBlank()) return@forEach
-                            val date = parseDueDate(task.due) ?: return@forEach
-                            if (YearMonth.from(date) != month) return@forEach
-                            val state = if (task.status == "completed") {
-                                HabitMarkState.DONE
-                            } else {
-                                HabitMarkState.SKIPPED
-                            }
-                            put(title to date, HabitMark(id, state))
+                    //  - 완료            → 한 것(V)
+                    //  - 미완료 + 건너뜀 표시 → 안 한 것(X)
+                    //  - 미완료 + 표시 없음  → 그냥 아직 안 끝낸 할일이므로 기록이 아님
+                    // 같은 이름·같은 날짜가 여러 개면 완료(V)를 우선한다.
+                    val marks = mutableMapOf<Pair<String, LocalDate>, HabitMark>()
+                    all.forEach { task ->
+                        val id = task.id ?: return@forEach
+                        val title = task.title?.trim().orEmpty()
+                        if (title.isBlank()) return@forEach
+                        val date = parseDueDate(task.due) ?: return@forEach
+                        if (YearMonth.from(date) != month) return@forEach
+
+                        val state = when {
+                            task.status == "completed" -> HabitMarkState.DONE
+                            task.notes?.contains(SKIP_MARKER) == true -> HabitMarkState.SKIPPED
+                            else -> return@forEach
                         }
+
+                        val key = title to date
+                        val existing = marks[key]
+                        // 이미 "한 것"으로 잡혔으면 덮어쓰지 않는다.
+                        if (existing?.state == HabitMarkState.DONE) return@forEach
+                        marks[key] = HabitMark(id, state)
                     }
 
                     // 일기 목록이 지정돼 있으면 그달 한 줄 일기도 함께 읽는다.
@@ -723,8 +734,14 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                                 Task().apply {
                                     title = habitTitle
                                     due = stamp
-                                    status = "completed"
-                                    completed = stamp
+                                    if (next == HabitMarkState.DONE) {
+                                        status = "completed"
+                                        completed = stamp
+                                    } else {
+                                        // 평범한 할일과 구분되게 표시를 남긴다.
+                                        status = "needsAction"
+                                        notes = SKIP_MARKER
+                                    }
                                 }
                             ).execute().id
                         }
@@ -734,9 +751,11 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
                                 if (next == HabitMarkState.DONE) {
                                     status = "completed"
                                     completed = stamp
+                                    notes = ""
                                 } else {
                                     status = "needsAction"
                                     completed = null
+                                    notes = SKIP_MARKER
                                 }
                             }
                             service.tasks().patch(listId, before.taskId, patch).execute()

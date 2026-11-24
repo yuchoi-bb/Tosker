@@ -236,7 +236,7 @@ class SettingsStore(context: Context) {
         prefs.edit().putString(habitCacheKey(listId, month), json).apply()
     }
 
-    private fun habitCacheKey(listId: String, month: String) = "habit_cache_${listId}_$month"
+    private fun habitCacheKey(listId: String, month: String) = "habit_cache2_${listId}_$month"
 
     /** 설정이 마지막으로 바뀐 시각(epoch millis). 동기화 충돌 해결에 쓴다. */
     fun loadUpdatedAt(): Long = prefs.getLong(KEY_UPDATED_AT, 0L)

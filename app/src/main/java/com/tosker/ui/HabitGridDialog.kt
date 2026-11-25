@@ -440,6 +440,8 @@ private fun HabitGrid(
                         days.forEach { date ->
                             val mark = state.marks[habit.title to date]
                             val isToday = date == today
+                            // 아직 오지 않은 날은 체크할 수 없다.
+                            val isFuture = date.isAfter(today)
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
@@ -447,15 +449,22 @@ private fun HabitGrid(
                                     .padding(1.dp)
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(
-                                        if (isToday) MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
-                                        else Color.Transparent
+                                        when {
+                                            isToday -> MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
+                                            isFuture -> MaterialTheme.colorScheme.outline.copy(alpha = 0.06f)
+                                            else -> Color.Transparent
+                                        }
                                     )
                                     .border(
                                         0.5.dp,
-                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                                        MaterialTheme.colorScheme.outline.copy(
+                                            alpha = if (isFuture) 0.12f else 0.25f
+                                        ),
                                         RoundedCornerShape(4.dp)
                                     )
-                                    .clickable { onToggle(habit.title, date) }
+                                    .clickable(enabled = !isFuture) {
+                                        onToggle(habit.title, date)
+                                    }
                             ) {
                                 // 한 것 V(초록) / 안 한 것 X(빨강) / 기록 없음은 빈 칸
                                 when (mark?.state) {

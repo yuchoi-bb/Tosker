@@ -695,6 +695,8 @@ class ToskerViewModel(application: Application) : AndroidViewModel(application) 
      * 화면을 먼저 바꿔 바로 반응하게 하고, 통신이 실패하면 원래대로 되돌린다.
      */
     fun toggleHabitMark(habitTitle: String, date: LocalDate) {
+        // 아직 오지 않은 날은 기록할 수 없다.
+        if (date.isAfter(LocalDate.now())) return
         val state = _uiState.value
         val loaded = state.habitGridState as? HabitGridState.Loaded ?: return
         val listId = state.habitListId ?: return

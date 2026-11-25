@@ -907,10 +907,17 @@ function habitGrid(habits, marks, year, month, lastDay, listId, redraw) {
     row.className = 'habit-row';
     days.forEach((key) => {
       const markKey = `${habit.title}|${key}`;
+      // 아직 오지 않은 날은 체크할 수 없다.
+      const isFuture = key > todayKey;
       const cell = document.createElement('button');
       cell.className = `habit-cell${key === todayKey ? ' today' : ''}`;
       cell.textContent = marks.has(markKey) ? 'X' : '';
+      if (isFuture) {
+        cell.disabled = true;
+        cell.style.opacity = '0.4';
+      }
       cell.onclick = async () => {
+        if (isFuture) return;
         const existingId = marks.get(markKey);
         cell.disabled = true;
         try {
